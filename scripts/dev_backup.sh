@@ -17,6 +17,16 @@ echo "==> [AQUA COMMAND] Initiating system state backup at ${TIMESTAMP}..."
 # Ensure target directories exist before packaging
 mkdir -p "${BASE_DIR}/data" "${BASE_DIR}/aqua-command/storage" "${BASE_DIR}/config"
 
+# Run online WAL checkpoint on any SQLite databases to bound disk usage and flush WAL frames
+if command -v sqlite3 >/dev/null 2>&1; then
+    for db in "${BASE_DIR}"/data/*.db "${BASE_DIR}"/aqua-command/storage/*.db; do
+        if [ -f "$db" ]; then
+            echo "==> [CHECKPOINT] Checkpointing SQLite database: $(basename "$db")..."
+            sqlite3 "$db" "PRAGMA wal_checkpoint(TRUNCATE);" || true
+        fi
+    done
+fi
+
 # Archive data, storage, and config
 tar -czf "${BACKUP_FILE}" \
     -C "${BASE_DIR}" \

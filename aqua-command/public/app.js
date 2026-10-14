@@ -1344,7 +1344,56 @@ async function loadDistricts() {
 async function init() {
   try {
     const r = await fetch('/api/state');
-    if (!r.ok) throw Error('Server not responding');
+    if (r.status === 401) {
+      const appEl = $('#app');
+      if (appEl) {
+        appEl.innerHTML = `
+          <div class="boot" style="max-width:440px;margin:60px auto;padding:32px;background:rgba(10,25,47,0.95);border:1px solid rgba(0,180,216,0.35);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.6);text-align:center;">
+            <div style="font-size:36px;color:var(--accent,#00b4d8);margin-bottom:12px;">${icon('server')}</div>
+            <h2 style="margin:0 0 8px;font-size:20px;color:#f8fafc;font-weight:600;">AQUA COMMAND · ยืนยันสิทธิ์การเข้าใช้งาน</h2>
+            <p style="color:#94a3b8;font-size:13px;margin:0 0 20px;line-height:1.5;">ระบบเปิดใช้งานโหมดความปลอดภัย (Distributed Lab Profile)<br/>กรุณากรอก Viewer Key เพื่อเข้าสู่ Dashboard</p>
+            <form id="aqua-login-form" style="display:flex;flex-direction:column;gap:14px;text-align:left;">
+              <div>
+                <label style="display:block;font-size:12px;color:#cbd5e1;margin-bottom:6px;">Viewer Key / Passphrase</label>
+                <input id="aqua-login-key" type="password" placeholder="กรอกรหัสผ่านเพื่อเข้าใช้งาน" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:14px;" required />
+              </div>
+              <button type="submit" style="padding:11px 16px;font-weight:600;background:#0284c7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;transition:background 0.2s;">เข้าสู่ระบบ (Sign In)</button>
+              <div id="aqua-login-error" style="color:#ef4444;font-size:13px;display:none;background:rgba(239,68,68,0.1);padding:8px 12px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);"></div>
+            </form>
+          </div>
+        `;
+        const form = document.getElementById('aqua-login-form');
+        form?.addEventListener('submit', async ev => {
+          ev.preventDefault();
+          const errEl = document.getElementById('aqua-login-error');
+          const keyInput = document.getElementById('aqua-login-key');
+          if (errEl) errEl.style.display = 'none';
+          try {
+            const res = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ key: keyInput?.value?.trim() })
+            });
+            if (res.ok) {
+              init();
+            } else {
+              const err = await res.json().catch(() => ({}));
+              if (errEl) {
+                errEl.textContent = err.error || 'รหัสผ่านไม่ถูกต้อง หรือสิทธิ์ไม่เพียงพอ';
+                errEl.style.display = 'block';
+              }
+            }
+          } catch (networkErr) {
+            if (errEl) {
+              errEl.textContent = 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้: ' + networkErr.message;
+              errEl.style.display = 'block';
+            }
+          }
+        });
+      }
+      return;
+    }
+    if (!r.ok) throw Error('Server error HTTP ' + r.status);
     state.data = await r.json();
     render();
 

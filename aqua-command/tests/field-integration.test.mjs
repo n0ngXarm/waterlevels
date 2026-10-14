@@ -117,34 +117,131 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
     assert.equal(gatewayRead.status, 401, 'Gateway key MUST NOT have Viewer permissions on /api/state');
 
     // 4.4 VIEWER_KEY CANNOT ingest telemetry (Role Separation)
-    const viewerIngest = await postIngest({ stationId: 'CM-01' }, VIEWER_KEY);
+    const viewerIngest = await postIngest({ stationId: 'CM-01', collectorId: 'GW-CM01-PATAN' }, VIEWER_KEY);
     assert.equal(viewerIngest.status, 401, 'Viewer key MUST NOT have Gateway Ingestion permissions');
 
-    // 4.5 Passing token via URL query parameter is STRICTLY REJECTED (No URL credentials)
+    // 4.5 ADMIN_KEY CANNOT ingest telemetry (Strict Separation of Gateway vs Admin)
+    const adminIngest = await postIngest({ stationId: 'CM-01', collectorId: 'GW-CM01-PATAN' }, ADMIN_KEY);
+    assert.equal(adminIngest.status, 401, 'Admin key MUST NOT be accepted on gateway ingestion endpoint');
+
+    // 4.6 Passing token via URL query parameter is STRICTLY REJECTED (No URL credentials)
     const urlTokenRes = await fetch(`${base}/api/state?token=${VIEWER_KEY}`);
     assert.equal(urlTokenRes.status, 401, 'Credentials sent via URL query parameters must be rejected');
 
-    // 4.6 Gateway key CANNOT access Admin export endpoint
+    // 4.7 Gateway key CANNOT access Admin export endpoint
     const gatewayExport = await fetch(`${base}/api/export/alerts`, { headers: { 'X-Gateway-Token': GATEWAY_KEY } });
     assert.equal(gatewayExport.status, 401, 'Gateway key MUST NOT have Admin export permissions');
 
-    // 4.7 Admin key CAN access Admin export endpoint
+    // 4.8 Viewer key CANNOT access Admin export endpoint
+    const viewerExport = await fetch(`${base}/api/export/alerts`, { headers: { 'Authorization': `Bearer ${VIEWER_KEY}` } });
+    assert.equal(viewerExport.status, 401, 'Viewer key MUST NOT have Admin export permissions');
+
+    // 4.9 Admin key CAN access Admin export endpoint
     const adminExport = await fetch(`${base}/api/export/alerts`, { headers: { 'Authorization': `Bearer ${ADMIN_KEY}` } });
     assert.equal(adminExport.status, 200, 'Admin key must access Admin export endpoint');
 
+    // --- Phase 2A Negative Security Tests: Gateway Binding & Spoofing Prevention ---
+    // 4.10 Unregistered Gateway ID returns HTTP 403 Forbidden
+    const unregGw = await postIngest({
+      stationId: 'CM-01',
+      collectorId: 'GW-UNREGISTERED-FAKE',
+      sourceTimestamp: new Date().toISOString(),
+      points: { CM01_PT_01: { value: 2.5, quality: 'GOOD' } }
+    }, GATEWAY_KEY);
+    assert.equal(unregGw.status, 403, 'Unregistered Gateway ID must return HTTP 403');
+
+    // 4.11 Cross-Station Injection: Gateway GW-CM01-PATAN is bound to CM-01; sending for CM-02 returns 403
+    const crossStation = await postIngest({
+      stationId: 'CM-02',
+      collectorId: 'GW-CM01-PATAN',
+      sourceTimestamp: new Date().toISOString(),
+      points: { CM02_PT_01: { value: 2.5, quality: 'GOOD' } }
+    }, GATEWAY_KEY);
+    assert.equal(crossStation.status, 403, 'Cross-station injection attempt must return HTTP 403');
+
+    // 4.12 Gateway Spoofing: Invalid token for registered gateway returns HTTP 401 Unauthorized
+    const spoofToken = await postIngest({
+      stationId: 'CM-01',
+      collectorId: 'GW-CM01-PATAN',
+      sourceTimestamp: new Date().toISOString(),
+      points: { CM01_PT_01: { value: 2.5, quality: 'GOOD' } }
+    }, 'invalid-spoofed-gateway-token-32ch');
+    assert.equal(spoofToken.status, 401, 'Invalid token for registered gateway must return HTTP 401');
+
+    // --- Phase 2A Frontend Session Cookie Authentication Architecture ---
+    // 4.13 Invalid credentials to /api/auth/login return 401
+    const badLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'wrong-passphrase-at-least-24-chars-long' })
+    });
+    assert.equal(badLogin.status, 401);
+
+    // 4.14 Viewer login to /api/auth/login returns 200 and sets HttpOnly aqua_session cookie
+    const viewerLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: VIEWER_KEY })
+    });
+    assert.equal(viewerLogin.status, 200);
+    const setCookieHeader = viewerLogin.headers.get('set-cookie');
+    assert.ok(setCookieHeader, 'Login must issue Set-Cookie header');
+    assert.match(setCookieHeader, /aqua_session=[a-f0-9]{64}/);
+    assert.match(setCookieHeader, /HttpOnly/i);
+    assert.match(setCookieHeader, /SameSite=Lax/i);
+
+    const sessionMatch = setCookieHeader.match(/aqua_session=([a-f0-9]+)/);
+    const sessionCookie = `aqua_session=${sessionMatch[1]}`;
+
+    // 4.15 Session cookie can access /api/auth/status
+    const authStatus = await (await fetch(`${base}/api/auth/status`, {
+      headers: { 'Cookie': sessionCookie }
+    })).json();
+    assert.equal(authStatus.authenticated, true);
+    assert.equal(authStatus.role, 'viewer');
+
+    // 4.16 Session cookie can access /api/state WITHOUT any Authorization header
+    const cookieStateRes = await fetch(`${base}/api/state`, {
+      headers: { 'Cookie': sessionCookie }
+    });
+    assert.equal(cookieStateRes.status, 200, 'Session cookie must authorize /api/state access');
+
+    // 4.17 Session cookie can connect to SSE /api/stream
+    const cookieStreamRes = await fetch(`${base}/api/stream`, {
+      headers: { 'Cookie': sessionCookie }
+    });
+    assert.equal(cookieStreamRes.status, 200, 'Session cookie must authorize SSE stream');
+    assert.match(cookieStreamRes.headers.get('content-type'), /text\/event-stream/);
+    cookieStreamRes.body?.cancel();
+
+    // 4.18 Logout clears the session cookie
+    const logoutRes = await fetch(`${base}/api/auth/logout`, {
+      method: 'POST',
+      headers: { 'Cookie': sessionCookie }
+    });
+    assert.equal(logoutRes.status, 200);
+    const clearedCookie = logoutRes.headers.get('set-cookie');
+    assert.match(clearedCookie, /Max-Age=0/);
+
+    // 4.19 After logout, former session cookie is rejected on /api/state
+    const postLogoutState = await fetch(`${base}/api/state`, {
+      headers: { 'Cookie': sessionCookie }
+    });
+    assert.equal(postLogoutState.status, 401, 'Logged out session cookie must be rejected');
+
     // --- Test Requirement 2: Invalid Telemetry Validation (HTTP 422 & 404) ---
     // Missing station ID
-    let inv = await postIngest({ collectorId: 'GW-01', sourceTimestamp: new Date().toISOString(), points: {} });
+    let inv = await postIngest({ collectorId: 'GW-CM01-PATAN', sourceTimestamp: new Date().toISOString(), points: {} });
     assert.equal(inv.status, 422, 'Missing stationId returns 422');
 
     // Nonexistent station ID
-    inv = await postIngest({ stationId: 'UNKNOWN_99', collectorId: 'GW-01', sourceTimestamp: new Date().toISOString(), points: { PT: { value: 2.5 } } });
+    inv = await postIngest({ stationId: 'UNKNOWN_99', collectorId: 'GW-CM01-PATAN', sourceTimestamp: new Date().toISOString(), points: { PT: { value: 2.5 } } });
     assert.equal(inv.status, 404, 'Unknown station returns 404');
 
     // Out of bounds: negative pressure
     inv = await postIngest({
       stationId: 'CM-01',
-      collectorId: 'GW-CM01',
+      collectorId: 'GW-CM01-PATAN',
       sourceTimestamp: new Date().toISOString(),
       points: { CM01_PT_01: { value: -2.0, quality: 'GOOD' } }
     });
@@ -153,7 +250,7 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
     // Non-numeric point value
     inv = await postIngest({
       stationId: 'CM-01',
-      collectorId: 'GW-CM01',
+      collectorId: 'GW-CM01-PATAN',
       sourceTimestamp: new Date().toISOString(),
       points: { CM01_PT_01: { value: 'NaN', quality: 'GOOD' } }
     });

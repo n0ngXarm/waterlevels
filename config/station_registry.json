@@ -11,6 +11,7 @@
     { "code": "AUTHORIZED_FIELD_TELEMETRY", "description": "ข้อมูลเซนเซอร์ภาคสนามที่รับผ่าน Secure Ingestion API จาก Edge Collector ที่ได้รับอนุญาต" },
     { "code": "SIMULATED_LAB", "description": "ข้อมูลจำลองจาก Simulated Edge Collector ในห้องทดลอง (Lab Environment)" },
     { "code": "PUBLIC_EXTERNAL", "description": "ข้อมูลสาธารณะจากเว็บไซต์ กปภ. หรือ กรมชลประทาน" },
+    { "code": "STATIC_REFERENCE_SAMPLE", "description": "ข้อมูลอ้างอิงแบบคงที่/ตัวอย่าง ไม่ใช่ข้อมูลเรียลไทม์ (Static Reference / Sample Data)" },
     { "code": "DEMO", "description": "ข้อมูลจำลองสำหรับทดสอบระบบ (Simulation)" }
   ],
   "stations": [
@@ -297,7 +298,8 @@
       "name": "เขื่อนแม่งัดสมบูรณ์ชล",
       "name_en": "Mae Ngat Somboon Chon Dam",
       "source_authority": "Royal Irrigation Department (RID)",
-      "data_classification": "PUBLIC_EXTERNAL",
+      "data_classification": "STATIC_REFERENCE_SAMPLE",
+      "is_real_time": false,
       "district": "แม่แตง",
       "capacity_mcm": 265.0,
       "storage_mcm": 212.5,
@@ -310,7 +312,8 @@
       "name": "เขื่อนแม่กวงอุดมธารา",
       "name_en": "Mae Kuang Udom Thara Dam",
       "source_authority": "Royal Irrigation Department (RID)",
-      "data_classification": "PUBLIC_EXTERNAL",
+      "data_classification": "STATIC_REFERENCE_SAMPLE",
+      "is_real_time": false,
       "district": "ดอยสะเก็ด",
       "capacity_mcm": 263.0,
       "storage_mcm": 189.4,
@@ -323,7 +326,8 @@
       "name": "จุดสูบน้ำดิบแม่น้ำปิง (ป่าตัน)",
       "name_en": "Ping River Raw Water Intake",
       "source_authority": "PWA Chiang Mai Special Class",
-      "data_classification": "PUBLIC_EXTERNAL",
+      "data_classification": "STATIC_REFERENCE_SAMPLE",
+      "is_real_time": false,
       "district": "เมืองเชียงใหม่",
       "water_level_m": 3.45,
       "threshold_m": 3.70,
@@ -336,6 +340,7 @@
       "station_id": "CM-01",
       "environment": "LAB",
       "enforced_classification": "SIMULATED_LAB",
+      "token_env": "GATEWAY_INGEST_KEY",
       "description": "Lab Simulator Gateway (Fedora Dev)"
     },
     {
@@ -343,6 +348,7 @@
       "station_id": "CM-01",
       "environment": "LAB",
       "enforced_classification": "SIMULATED_LAB",
+      "token_env": "GATEWAY_INGEST_KEY",
       "description": "Lab Simulator Gateway (nongserver Debian 13)"
     },
     {
@@ -350,6 +356,7 @@
       "station_id": "CM-01",
       "environment": "PROD",
       "enforced_classification": "AUTHORIZED_FIELD_TELEMETRY",
+      "token_env": "GATEWAY_INGEST_KEY",
       "description": "Physical Edge Collector at Pa Tan Plant (Requires PWA formal approval)"
     }
   ]

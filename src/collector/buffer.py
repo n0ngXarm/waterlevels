@@ -121,6 +121,23 @@ class CollectorBuffer:
             conn.commit()
             return nxt
 
+    def get_total_disk_bytes(self) -> int:
+        """Calculates total disk usage of SQLite DB including -wal and -shm journal files."""
+        total = 0
+        for suffix in ("", "-wal", "-shm"):
+            p = self.db_path.with_name(self.db_path.name + suffix)
+            try:
+                if p.exists():
+                    total += p.stat().st_size
+            except OSError:
+                pass
+        return total
+
+    def checkpoint(self) -> None:
+        """Performs SQLite WAL checkpoint to truncate journal files and bound disk usage."""
+        with self._get_connection() as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
     def _enforce_limits(self, conn: sqlite3.Connection) -> None:
         """Prunes expired records and enforces max records / max file size constraints."""
         # 1. Prune records older than retention period
@@ -138,11 +155,14 @@ class CollectorBuffer:
                 (excess,)
             )
 
-        # 3. Enforce file size limit if database exceeds max_bytes
+        # 3. Enforce disk size limit (including .db, -wal, and -shm files)
         try:
-            if self.db_path.exists() and self.db_path.stat().st_size > self.max_bytes:
-                logger.warning("Buffer DB file size (%d bytes) exceeds ceiling (%d bytes). Purging oldest 15%% pending records.",
-                               self.db_path.stat().st_size, self.max_bytes)
+            total_disk_bytes = self.get_total_disk_bytes()
+            if total_disk_bytes > self.max_bytes:
+                logger.warning(
+                    "Buffer total disk size (%d bytes) exceeds ceiling (%d bytes). Purging oldest 15%% pending records.",
+                    total_disk_bytes, self.max_bytes
+                )
                 drop_count = max(10, int(self.max_records * 0.15))
                 conn.execute(
                     "DELETE FROM telemetry_buffer WHERE id IN (SELECT id FROM telemetry_buffer WHERE status = 'PENDING' ORDER BY id ASC LIMIT ?)",
@@ -168,7 +188,15 @@ class CollectorBuffer:
                 (packet_json, src_ts, seq, now_str)
             )
             conn.commit()
-            return cursor.lastrowid
+            last_id = cursor.lastrowid
+
+        if self.get_total_disk_bytes() > self.max_bytes:
+            try:
+                self.checkpoint()
+            except Exception:
+                pass
+
+        return last_id
 
     def dequeue_batch(self, limit: int = 20) -> list[dict[str, Any]]:
         """Retrieves oldest pending packets in strict chronological FIFO order."""

@@ -47,9 +47,9 @@ let stations = [
 ];
 
 let reservoirs = [
-  {id:'RES-01',name:'เขื่อนแม่งัดสมบูรณ์ชล',nameEn:'Mae Ngat Somboon Chon Dam',district:'แม่แตง',capacityMcm:265.0,storageMcm:212.5,storagePct:80.2,inflowM3s:14.2,outflowM3s:8.5,status:'normal',statusText:'ปกติ (80.2%)',dataClassification:'PUBLIC_EXTERNAL'},
-  {id:'RES-02',name:'เขื่อนแม่กวงอุดมธารา',nameEn:'Mae Kuang Udom Thara Dam',district:'ดอยสะเก็ด',capacityMcm:263.0,storageMcm:189.4,storagePct:72.0,inflowM3s:11.8,outflowM3s:6.2,status:'normal',statusText:'ปกติ (72.0%)',dataClassification:'PUBLIC_EXTERNAL'},
-  {id:'RES-03',name:'จุดสูบน้ำดิบแม่น้ำปิง (ป่าตัน)',nameEn:'Ping River Raw Water Intake',district:'เมืองเชียงใหม่',capacityMcm:null,waterLevelM:3.45,thresholdM:3.70,storagePct:93.2,status:'normal',statusText:'ระดับน้ำปกติ (3.45 ม.รทก.)',dataClassification:'PUBLIC_EXTERNAL'}
+  {id:'RES-01',name:'เขื่อนแม่งัดสมบูรณ์ชล',nameEn:'Mae Ngat Somboon Chon Dam',district:'แม่แตง',capacityMcm:265.0,storageMcm:212.5,storagePct:80.2,inflowM3s:14.2,outflowM3s:8.5,status:'normal',statusText:'ปกติ (80.2%)',dataClassification:'STATIC_REFERENCE_SAMPLE',isRealTime:false},
+  {id:'RES-02',name:'เขื่อนแม่กวงอุดมธารา',nameEn:'Mae Kuang Udom Thara Dam',district:'ดอยสะเก็ด',capacityMcm:263.0,storageMcm:189.4,storagePct:72.0,inflowM3s:11.8,outflowM3s:6.2,status:'normal',statusText:'ปกติ (72.0%)',dataClassification:'STATIC_REFERENCE_SAMPLE',isRealTime:false},
+  {id:'RES-03',name:'จุดสูบน้ำดิบแม่น้ำปิง (ป่าตัน)',nameEn:'Ping River Raw Water Intake',district:'เมืองเชียงใหม่',capacityMcm:null,waterLevelM:3.45,thresholdM:3.70,storagePct:93.2,status:'normal',statusText:'ระดับน้ำปกติ (3.45 ม.รทก.)',dataClassification:'STATIC_REFERENCE_SAMPLE',isRealTime:false}
 ];
 
 // Load Station Registry from config if available (Priority 1 Data Integrity)
@@ -84,6 +84,25 @@ if (REGISTRY_PATH) {
           y: st.y
         };
       });
+    }
+    if (Array.isArray(reg.reservoirs) && reg.reservoirs.length > 0) {
+      reservoirs = reg.reservoirs.map(r => ({
+        id: r.id,
+        name: r.name,
+        nameEn: r.name_en || r.nameEn || '',
+        district: r.district,
+        capacityMcm: r.capacity_mcm ?? null,
+        storageMcm: r.storage_mcm ?? null,
+        storagePct: r.storage_pct ?? null,
+        waterLevelM: r.water_level_m ?? null,
+        thresholdM: r.threshold_m ?? null,
+        inflowM3s: r.inflow_m3s ?? null,
+        outflowM3s: r.outflow_m3s ?? null,
+        status: 'normal',
+        statusText: r.storage_pct ? `ปกติ (${r.storage_pct}%)` : (r.water_level_m ? `ระดับน้ำปกติ (${r.water_level_m} ม.รทก.)` : 'ปกติ'),
+        dataClassification: r.data_classification || 'STATIC_REFERENCE_SAMPLE',
+        isRealTime: r.is_real_time ?? false
+      }));
     }
     if (Array.isArray(reg.authorized_gateways)) {
       authorizedGateways = reg.authorized_gateways;
@@ -254,76 +273,205 @@ function extractToken(req) {
   }
   return null;
 }
-function checkKey(req){
-  if(!SECRET||SECRET.length<24)return false;
-  const token = extractToken(req);
-  return typeof token==='string' && token.length===SECRET.length && crypto.timingSafeEqual(Buffer.from(token),Buffer.from(SECRET));
+const activeSessions = new Map();
+function cleanExpiredSessions() {
+  const nowMs = Date.now();
+  for (const [sid, sess] of activeSessions.entries()) {
+    if (nowMs - sess.createdAt > 86400_000) activeSessions.delete(sid);
+  }
 }
-function checkGatewayKey(req){
+setInterval(cleanExpiredSessions, 600_000).unref();
+
+function getSessionFromReq(req) {
+  const cookie = req.headers['cookie'];
+  if (!cookie) return null;
+  const match = cookie.match(/(?:^|;\s*)aqua_session=([^;]+)/);
+  if (!match) return null;
+  const sid = decodeURIComponent(match[1]);
+  const sess = activeSessions.get(sid);
+  if (!sess) return null;
+  if (Date.now() - sess.createdAt > 86400_000) {
+    activeSessions.delete(sid);
+    return null;
+  }
+  return sess;
+}
+
+function checkKey(req) {
+  const sess = getSessionFromReq(req);
+  if (sess && sess.role === 'admin') return true;
+  if (!SECRET || SECRET.length < 24) return false;
+  const token = extractToken(req);
+  return typeof token === 'string' && token.length === SECRET.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(SECRET));
+}
+
+function checkGatewayKey(req) {
   const token = req.headers['x-gateway-token'] || extractToken(req);
-  if(!token) return false;
-  // Gateway key or Admin key allowed for ingestion; VIEWER KEY IS STRICTLY FORBIDDEN
-  const validKeys = [GATEWAY_KEY, SECRET].filter(k => k && k.length >= 24);
-  for(const k of validKeys){
-    if(token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k))){
+  if (!token) return false;
+  // Admin key and Viewer key are STRICTLY FORBIDDEN as gateway credentials
+  if (SECRET && token.length === SECRET.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(SECRET))) {
+    return false;
+  }
+  if (VIEWER_KEY && token.length === VIEWER_KEY.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(VIEWER_KEY))) {
+    return false;
+  }
+  const validKeys = [GATEWAY_KEY].filter(k => k && k.length >= 24);
+  for (const k of validKeys) {
+    if (token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k))) {
       return true;
     }
   }
   return false;
 }
-function checkReadKey(req){
-  if(!REQUIRE_AUTH_FOR_READ) return true;
-  if(DEMO && isLoopback(req)) return true;
+
+function checkReadKey(req) {
+  if (!REQUIRE_AUTH_FOR_READ) return true;
+  if (DEMO && isLoopback(req)) return true;
+  const sess = getSessionFromReq(req);
+  if (sess && (sess.role === 'viewer' || sess.role === 'admin')) return true;
   const token = extractToken(req);
-  if(!token) return false;
-  // Viewer key or Admin key allowed for read-only; GATEWAY KEY IS STRICTLY FORBIDDEN
+  if (!token) return false;
+  // Gateway key is strictly forbidden for read-only endpoints
+  if (GATEWAY_KEY && token.length === GATEWAY_KEY.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(GATEWAY_KEY))) {
+    return false;
+  }
   const validKeys = [VIEWER_KEY, SECRET].filter(k => k && k.length >= 24);
-  for(const k of validKeys){
-    if(token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k))){
+  for (const k of validKeys) {
+    if (token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k))) {
       return true;
     }
   }
   return false;
 }
-function isLoopback(req){const remote=req.socket.remoteAddress||'';return remote==='127.0.0.1'||remote==='::1'||remote==='::ffff:127.0.0.1';}
-async function body(req){let length=0,chunks=[];for await(const c of req){length+=c.length;if(length>16_384)throw Object.assign(new Error('Body too large'),{status:413});chunks.push(c);}let parsed=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('Expected JSON object');return parsed;}
-async function handler(req,res){
-  const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);const p=url.pathname;
-  if(req.method==='GET'&&p==='/api/health')return reply(res,200,{ok:true,mode:DEMO?'demo':'live-ingest',telegramConfigured:Boolean(BOT&&CHAT),authEnforced:REQUIRE_AUTH_FOR_READ,uptimeSeconds:Math.round(process.uptime())});
-  if(req.method==='GET'&&p==='/api/state'){
-    if(!checkReadKey(req)) return reply(res,401,{error:'Authentication required to access state'});
-    return reply(res,200,snapshot());
-  }
-  if(req.method==='GET'&&p==='/api/stream'){
-    if(!checkReadKey(req)) return reply(res,401,{error:'Authentication required to access stream'});
-    res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no','X-Content-Type-Options':'nosniff'});
-    clients.add(res);res.write(`retry: 3000\ndata: ${JSON.stringify(snapshot())}\n\n`);const interval=setInterval(()=>res.write(': ping\n\n'),20000);req.on('close',()=>{clearInterval(interval);clients.delete(res);});return;
-  }
-  if(req.method==='GET'&&p==='/api/export/alerts'){
-    if(!checkKey(req))return reply(res,401,{error:'Admin API key required'});
-    const cols=['id','createdAt','stationId','stationName','region','title','severity','message','resolvedAt','acknowledgedAt','demo'];
-    const csv=[cols.join(','),...store.alerts.map(a=>cols.map(k=>'"'+String(a[k]??'').replaceAll('"','""')+'"').join(','))].join('\r\n');
-    res.writeHead(200,{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="aqua-alerts.csv"','Cache-Control':'no-store'});return res.end('\ufeff'+csv);
-  }
-  if(req.method==='POST'&&p==='/api/v1/ingest/telemetry'){
-    if(!checkGatewayKey(req)) return reply(res,401,{error:'Invalid or missing Gateway token'});
-    let b=await body(req);
-    if(!b.stationId||!safeId(b.stationId)) return reply(res,422,{error:'Valid stationId is required'});
-    if(!b.collectorId||typeof b.collectorId!=='string') return reply(res,422,{error:'Valid collectorId is required'});
-    if(!b.sourceTimestamp||isNaN(Date.parse(b.sourceTimestamp))) return reply(res,422,{error:'Valid ISO-8601 sourceTimestamp required'});
-    if(!b.points||typeof b.points!=='object'||Array.isArray(b.points)) return reply(res,422,{error:'Points dictionary is required'});
 
-    const s=stations.find(x=>x.id===b.stationId);
-    if(!s) return reply(res,404,{error:`Unknown station ID: ${b.stationId}`});
+function isLoopback(req) {
+  const remote = req.socket.remoteAddress || '';
+  return remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+}
 
-    // 1. Server-enforced Source Classification (Reject unverified client claims)
-    const gwReg = authorizedGateways.find(g => g.gateway_id === b.collectorId);
-    let enforcedClassification = 'SIMULATED_LAB';
-    if (gwReg && gwReg.enforced_classification) {
-      enforcedClassification = gwReg.enforced_classification;
-    } else if (b.collectorId.includes('FIELD-PROD') && !b.collectorId.includes('SIM') && !b.collectorId.includes('LAB')) {
-      enforcedClassification = 'AUTHORIZED_FIELD_TELEMETRY';
+async function body(req) {
+  let length = 0, chunks = [];
+  for await (const c of req) {
+    length += c.length;
+    if (length > 16_384) throw Object.assign(new Error('Body too large'), { status: 413 });
+    chunks.push(c);
+  }
+  let parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw Error('Expected JSON object');
+  return parsed;
+}
+
+async function handler(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const p = url.pathname;
+
+  if (req.method === 'POST' && p === '/api/auth/login') {
+    let b = await body(req);
+    const cred = String(b.token || b.key || b.password || '').trim();
+    if (!cred || cred.length < 24) {
+      return reply(res, 401, { error: 'Invalid viewer or admin credential' });
     }
+    let role = null;
+    if (SECRET && cred.length === SECRET.length && crypto.timingSafeEqual(Buffer.from(cred), Buffer.from(SECRET))) {
+      role = 'admin';
+    } else if (VIEWER_KEY && cred.length === VIEWER_KEY.length && crypto.timingSafeEqual(Buffer.from(cred), Buffer.from(VIEWER_KEY))) {
+      role = 'viewer';
+    } else {
+      return reply(res, 401, { error: 'Invalid viewer or admin credential' });
+    }
+    const sessionId = crypto.randomBytes(32).toString('hex');
+    activeSessions.set(sessionId, { role, createdAt: Date.now() });
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Set-Cookie': `aqua_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`
+    });
+    return res.end(JSON.stringify({ ok: true, authenticated: true, role }));
+  }
+
+  if (req.method === 'GET' && p === '/api/auth/status') {
+    const sess = getSessionFromReq(req);
+    if (sess) {
+      return reply(res, 200, { authenticated: true, role: sess.role, requireAuth: REQUIRE_AUTH_FOR_READ });
+    }
+    if (checkKey(req)) {
+      return reply(res, 200, { authenticated: true, role: 'admin', requireAuth: REQUIRE_AUTH_FOR_READ });
+    }
+    if (checkReadKey(req)) {
+      return reply(res, 200, { authenticated: true, role: 'viewer', requireAuth: REQUIRE_AUTH_FOR_READ });
+    }
+    return reply(res, 200, { authenticated: false, role: null, requireAuth: REQUIRE_AUTH_FOR_READ });
+  }
+
+  if (req.method === 'POST' && p === '/api/auth/logout') {
+    const cookie = req.headers['cookie'];
+    if (cookie) {
+      const match = cookie.match(/(?:^|;\s*)aqua_session=([^;]+)/);
+      if (match) activeSessions.delete(decodeURIComponent(match[1]));
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Set-Cookie': `aqua_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+    });
+    return res.end(JSON.stringify({ ok: true, authenticated: false }));
+  }
+
+  if (req.method === 'GET' && p === '/api/health') return reply(res, 200, { ok: true, mode: DEMO ? 'demo' : 'live-ingest', telegramConfigured: Boolean(BOT && CHAT), authEnforced: REQUIRE_AUTH_FOR_READ, uptimeSeconds: Math.round(process.uptime()) });
+  if (req.method === 'GET' && p === '/api/state') {
+    if (!checkReadKey(req)) return reply(res, 401, { error: 'Authentication required to access state' });
+    return reply(res, 200, snapshot());
+  }
+  if (req.method === 'GET' && p === '/api/stream') {
+    if (!checkReadKey(req)) return reply(res, 401, { error: 'Authentication required to access stream' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', 'X-Content-Type-Options': 'nosniff' });
+    clients.add(res); res.write(`retry: 3000\ndata: ${JSON.stringify(snapshot())}\n\n`); const interval = setInterval(() => res.write(': ping\n\n'), 20000); req.on('close', () => { clearInterval(interval); clients.delete(res); }); return;
+  }
+  if (req.method === 'GET' && p === '/api/export/alerts') {
+    if (!checkKey(req)) return reply(res, 401, { error: 'Admin API key required' });
+    const cols = ['id', 'createdAt', 'stationId', 'stationName', 'region', 'title', 'severity', 'message', 'resolvedAt', 'acknowledgedAt', 'demo'];
+    const csv = [cols.join(','), ...store.alerts.map(a => cols.map(k => '"' + String(a[k] ?? '').replaceAll('"', '""') + '"').join(','))].join('\r\n');
+    res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="aqua-alerts.csv"', 'Cache-Control': 'no-store' }); return res.end('\ufeff' + csv);
+  }
+  if (req.method === 'POST' && p === '/api/v1/ingest/telemetry') {
+    const token = req.headers['x-gateway-token'] || extractToken(req);
+    if (!token || token.length < 24) return reply(res, 401, { error: 'Invalid or missing Gateway token' });
+
+    // Strict separation: Admin key and Viewer key CANNOT ingest telemetry
+    if (SECRET && token.length === SECRET.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(SECRET))) {
+      return reply(res, 401, { error: 'Admin API key cannot be used for gateway ingestion' });
+    }
+    if (VIEWER_KEY && token.length === VIEWER_KEY.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(VIEWER_KEY))) {
+      return reply(res, 401, { error: 'Viewer key cannot be used for gateway ingestion' });
+    }
+
+    let b = await body(req);
+    if (!b.stationId || !safeId(b.stationId)) return reply(res, 422, { error: 'Valid stationId is required' });
+    if (!b.collectorId || typeof b.collectorId !== 'string') return reply(res, 422, { error: 'Valid collectorId is required' });
+    if (!b.sourceTimestamp || isNaN(Date.parse(b.sourceTimestamp))) return reply(res, 422, { error: 'Valid ISO-8601 sourceTimestamp required' });
+    if (!b.points || typeof b.points !== 'object' || Array.isArray(b.points)) return reply(res, 422, { error: 'Points dictionary is required' });
+
+    const s = stations.find(x => x.id === b.stationId);
+    if (!s) return reply(res, 404, { error: `Unknown station ID: ${b.stationId}` });
+
+    // Gateway Registry Binding & Cross-Station Injection Prevention
+    const gwReg = authorizedGateways.find(g => g.gateway_id === b.collectorId);
+    if (!gwReg) {
+      return reply(res, 403, { error: `Unregistered or unauthorized gateway ID: ${b.collectorId}` });
+    }
+    if (gwReg.station_id !== b.stationId) {
+      return reply(res, 403, { error: `Gateway ${b.collectorId} is bound to station ${gwReg.station_id}, cross-station injection for ${b.stationId} rejected` });
+    }
+
+    const expectedToken = (gwReg.token_env && process.env[gwReg.token_env]) || gwReg.token || GATEWAY_KEY;
+    if (!expectedToken || expectedToken.length < 24 || token.length !== expectedToken.length || !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) {
+      return reply(res, 401, { error: 'Invalid gateway token' });
+    }
+
+    // 1. Server-enforced Source Classification (Strictly from authorized_gateways registry, NO substring matching)
+    const enforcedClassification = gwReg.enforced_classification || 'SIMULATED_LAB';
 
     // 2. Idempotency Check (Deduplication)
     const packetSig = `${b.stationId}:${b.collectorId}:${b.epoch||'0'}:${b.sequenceNumber||0}:${b.sourceTimestamp}`;

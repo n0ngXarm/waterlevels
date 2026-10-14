@@ -201,6 +201,18 @@ class TestCollectorBuffer(unittest.TestCase):
         seqs = [b["packet"]["sequenceNumber"] for b in batch]
         self.assertEqual(seqs, [3, 4, 5, 6, 7])
 
+    def test_wal_accounting_and_checkpoint(self):
+        """Validates that get_total_disk_bytes accounts for WAL and checkpoint truncates WAL."""
+        for i in range(1, 10):
+            self.buffer.enqueue({"stationId": "CM-01", "sequenceNumber": i, "payload": "x" * 1024})
+
+        total_bytes = self.buffer.get_total_disk_bytes()
+        self.assertGreater(total_bytes, 0)
+
+        # Test online checkpoint truncate
+        self.buffer.checkpoint()
+        self.assertLessEqual(self.buffer.get_total_disk_bytes(), self.buffer.max_bytes)
+
 
 class TestEdgeCollectorAgentE2E(unittest.TestCase):
     """End-to-End integration tests connecting EdgeCollectorAgent to Ingestion endpoint."""

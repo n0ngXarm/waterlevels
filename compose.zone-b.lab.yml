@@ -1,0 +1,48 @@
+# ==============================================================================
+# AQUA COMMAND — Zone B Distributed Lab Environment (compose.zone-b.lab.yml)
+#
+# Dedicated Compose definition for Zone B (Fedora Operations Command Center).
+# Runs ONLY the AQUA COMMAND Ingestion API, State Database, Dashboard & Alert Engine.
+#
+# Network / Safety Constraint:
+# - Binds strictly to ${AQUA_BIND_IP:-127.0.0.1}:8787:8787 by default.
+# - Zero simulator or edge collector containers run on Zone B in this topology.
+# ==============================================================================
+
+services:
+  aqua-command:
+    build:
+      context: ./aqua-command
+      dockerfile: Dockerfile
+    image: pwa-aqua-command:lab
+    container_name: aqua_command_zone_b_lab
+    restart: unless-stopped
+    env_file:
+      - path: .env.lab
+        required: false
+      - path: .env
+        required: false
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8787"
+      TZ: Asia/Bangkok
+      DEMO_MODE: "false"
+      REQUIRE_AUTH_FOR_READ: "true"
+      STATION_REGISTRY_PATH: /app/config/station_registry.json
+    ports:
+      - "${AQUA_BIND_IP:-127.0.0.1}:8787:8787"
+    volumes:
+      - ./aqua-command/storage:/app/storage:z
+      - ./config:/app/config:ro,z
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    networks:
+      - aqua-lab-net
+
+networks:
+  aqua-lab-net:
+    driver: bridge

@@ -42,11 +42,14 @@ else
     echo "==> [WARN] No .sha256 file found. Skipping checksum verification."
 fi
 
-# Extract into BASE_DIR
-echo "==> Extracting files..."
-tar -xzf "${BACKUP_ARCHIVE}" -C "${BASE_DIR}"
+TARGET_DIR="${2:-${BASE_DIR}}"
+mkdir -p "${TARGET_DIR}"
+
+# Extract into TARGET_DIR
+echo "==> Extracting files into ${TARGET_DIR}..."
+tar -xzf "${BACKUP_ARCHIVE}" -C "${TARGET_DIR}"
 
 # Ensure write permissions
-chmod -R u+rw "${BASE_DIR}/data" "${BASE_DIR}/aqua-command/storage" 2>/dev/null || true
+chmod -R u+rw "${TARGET_DIR}/data" "${TARGET_DIR}/aqua-command/storage" 2>/dev/null || true
 
 echo "==> [SUCCESS] Restore completed successfully."
