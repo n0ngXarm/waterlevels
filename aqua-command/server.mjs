@@ -16,6 +16,8 @@ const DEMO = process.env.DEMO_MODE !== 'false';
 const SEND_DEMO = process.env.SEND_DEMO_ALERTS === 'true';
 const BOT = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT = process.env.TELEGRAM_CHAT_ID || '';
+const TEST_BOT = process.env.TELEGRAM_TEST_BOT_TOKEN || '';
+const TEST_CHAT = process.env.TELEGRAM_TEST_CHAT_ID || '';
 const TELEGRAM_BASE = (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, '');
 const SECRET = process.env.ADMIN_API_KEY || '';
 const VIEWER_KEY = process.env.VIEWER_API_KEY || '';
@@ -23,7 +25,7 @@ const GATEWAY_KEY = process.env.GATEWAY_INGEST_KEY || '';
 const APP_ENV = (process.env.APP_ENV || (DEMO ? 'demo' : 'lab')).toLowerCase();
 const REQUIRE_AUTH_FOR_READ = process.env.REQUIRE_AUTH_FOR_READ === 'true';
 const REMINDER_MS = Math.max(5, Number(process.env.REMINDER_MINUTES)||30)*60_000;
-const SEND_GAP = Math.max(1000, Number(process.env.TELEGRAM_MIN_GAP_MS)||1400);
+const SEND_GAP = Math.max(10, Number(process.env.TELEGRAM_MIN_GAP_MS)||1400);
 const STALE_AFTER_MS = Math.max(30,Number(process.env.STALE_AFTER_SECONDS)||120)*1000;
 const DATA_PATH = path.join(ROOT,'storage','state.json');
 const PUBLIC = path.join(ROOT,'public');
@@ -154,7 +156,7 @@ try {
 }
 catch (e) {if (e.code!=='ENOENT') console.error('Could not read state:',e.message);}
 let saveTimer;
-function saveSoon() {clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,400);}
+function saveSoon() {clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,400); setImmediate(processQueue);}
 function saveNow() {try {let temp=DATA_PATH+'.tmp';fs.writeFileSync(temp,JSON.stringify(store));fs.renameSync(temp,DATA_PATH);}catch(e){console.error('State persistence error:',e.message);}}
 function statusOf(s) {if (!s.hasTelemetry) return 'unknown';const a=evaluateTelemetry(s);return a.some(x=>x.severity==='critical')?'critical':a.some(x=>x.severity==='warning')?'warning':'normal';}
 function snapshot() {
@@ -172,7 +174,12 @@ function snapshot() {
   return {
     province:'เชียงใหม่',
     serverTime:now(),
+    env:APP_ENV,
     mode:DEMO?'demo':'live-ingest',
+    simulation:{
+      enabled:APP_ENV!=='production',
+      mode:APP_ENV==='lab'?'lab_admin':(DEMO?'demo':'disabled')
+    },
     stations:details,
     reservoirs,
     history,
@@ -180,9 +187,21 @@ function snapshot() {
     queueStats:{
       pending:store.queue.filter(x=>x.status==='pending').length,
       failed:store.queue.filter(x=>x.status==='failed').length,
-      sent:store.queue.filter(x=>x.status==='sent').length
+      sent:store.queue.filter(x=>x.status==='sent').length,
+      mockSent:store.queue.filter(x=>x.status==='sent'&&x.mock).length
     },
-    queueRecent:store.queue.slice(-8).reverse().map(j=>({id:j.id,alertId:j.alertId,status:j.status,attempt:j.attempt,createdAt:j.createdAt,sentAt:j.sentAt||null,lastError:j.lastError||null})),
+    queueRecent:store.queue.slice(-8).reverse().map(j=>({
+      id:j.id,
+      alertId:j.alertId,
+      status:j.status,
+      mode:j.mode||(j.mock?'mock':'real'),
+      mock:Boolean(j.mock),
+      mockNotice:j.mockNotice||null,
+      attempt:j.attempt,
+      createdAt:j.createdAt,
+      sentAt:j.sentAt||null,
+      lastError:j.lastError||null
+    })),
     metrics:{
       total:details.length,
       online:details.filter(x=>x.online).length,
@@ -198,35 +217,51 @@ function snapshot() {
       reservoirAvgPct:resAvg,
       activeAlertCount:alertCounts.critical+alertCounts.warning
     },
-    telegram:{configured:Boolean(BOT&&CHAT),demoForwarding:SEND_DEMO,reminderMinutes:REMINDER_MS/60},
+    telegram:{
+      configured:Boolean(BOT&&CHAT),
+      testConfigured:Boolean(TEST_BOT&&TEST_CHAT),
+      mockMode:!Boolean(BOT&&CHAT),
+      mode:Boolean(BOT&&CHAT)?'real':'mock',
+      demoForwarding:SEND_DEMO,
+      reminderMinutes:REMINDER_MS/60
+    },
     rules:RULES.map(({id,title,warning,critical,unit,direction})=>({id,title,warning,critical,unit,direction}))
   };
 }
 const clients = new Set();
 function broadcast() {const message=`data: ${JSON.stringify(snapshot())}\n\n`;for(const c of clients) try{c.write(message);}catch{clients.delete(c);}}
 const uid=()=>crypto.randomUUID().slice(0,8).toUpperCase();
-function createAlert(station,rule,severity,value,{resolved=false,demo=DEMO}={}) {
+function createAlert(station,rule,severity,value,{resolved=false,demo=DEMO,dataClassification=null}={}) {
+  const isDemo = Boolean(demo || station.hasSimulatedLabIncident);
+  const classification = dataClassification || station.dataClassification || (isDemo ? 'SIMULATED_LAB' : 'AUTHORIZED_FIELD_TELEMETRY');
   const message=resolved?`${rule.title} กลับสู่เกณฑ์ที่กำหนด (${value}${rule.unit})` :
     `${rule.title}: ${value}${rule.unit} / เกณฑ์เตือน ${rule.warning}${rule.unit}, วิกฤต ${rule.critical}${rule.unit}`;
-  const alert={id:`AL-${uid()}`,stationId:station.id,stationName:station.name,region:station.region,title:resolved?`${rule.title} — กลับสู่ปกติ`:rule.title,severity:resolved?'resolved':severity,message,value,ruleId:rule.id,createdAt:now(),resolvedAt:resolved?now():null,acknowledgedAt:null,demo};
+  const alert={id:`AL-${uid()}`,stationId:station.id,stationName:station.name,region:station.region,title:resolved?`${rule.title} — กลับสู่ปกติ`:rule.title,severity:resolved?'resolved':severity,message,value,ruleId:rule.id,createdAt:now(),resolvedAt:resolved?now():null,acknowledgedAt:null,demo:isDemo,dataClassification:classification};
   store.alerts.unshift(alert);store.alerts=store.alerts.slice(0,400);
-  if(BOT&&CHAT&&(!demo||SEND_DEMO)) store.queue.push({id:uid(),alertId:alert.id,status:'pending',attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null});
+
+  if(BOT&&CHAT&&(!isDemo||SEND_DEMO)) {
+    store.queue.push({id:uid(),alertId:alert.id,status:'pending',mode:'real',mock:false,attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null});
+  } else if((isDemo || APP_ENV === 'lab') && (!BOT || !CHAT)) {
+    store.queue.push({id:uid(),alertId:alert.id,status:'pending',mode:'mock',mock:true,attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null,mockNotice:'MOCK / NOT ACTUALLY SENT'});
+  }
   saveSoon();broadcast();return alert;
 }
-function processRules(station,{demo=DEMO,initial=false}={}) {
+function processRules(station,{demo=DEMO,dataClassification=null,initial=false}={}) {
+  const isSimulated = Boolean(demo || station.hasSimulatedLabIncident);
+  const classification = dataClassification || station.dataClassification || (isSimulated ? 'SIMULATED_LAB' : 'AUTHORIZED_FIELD_TELEMETRY');
   for(const rule of RULES) {
     const current=severityOf(rule,station[rule.field]);const key=station.id+':'+rule.id;
     const prev=store.active[key]||null;
     if(current===prev?.severity) {
-      if(current && !initial && Date.now()-(prev.lastNotice||0)>REMINDER_MS) {for(const a of store.alerts)if(a.stationId===station.id&&a.ruleId===rule.id&&!a.resolvedAt&&!a.supersededAt)a.supersededAt=now();createAlert(station,rule,current,station[rule.field],{demo});store.active[key]={severity:current,lastNotice:Date.now()};}
+      if(current && !initial && Date.now()-(prev.lastNotice||0)>REMINDER_MS) {for(const a of store.alerts)if(a.stationId===station.id&&a.ruleId===rule.id&&!a.resolvedAt&&!a.supersededAt)a.supersededAt=now();createAlert(station,rule,current,station[rule.field],{demo:isSimulated,dataClassification:classification});store.active[key]={severity:current,lastNotice:Date.now()};}
       continue;
     }
     if (current) {
       if(prev)for(const a of store.alerts)if(a.stationId===station.id&&a.ruleId===rule.id&&!a.resolvedAt&&!a.supersededAt)a.supersededAt=now();
-      if(!initial)createAlert(station,rule,current,station[rule.field],{demo});
+      if(!initial)createAlert(station,rule,current,station[rule.field],{demo:isSimulated,dataClassification:classification});
       store.active[key]={severity:current,lastNotice:Date.now()};
     } else {
-      if(prev && !initial)createAlert(station,rule,'resolved',station[rule.field],{resolved:true,demo});
+      if(prev && !initial)createAlert(station,rule,'resolved',station[rule.field],{resolved:true,demo:isSimulated,dataClassification:classification});
       delete store.active[key];
     }
     if(prev && current===null) {
@@ -238,20 +273,42 @@ function processRules(station,{demo=DEMO,initial=false}={}) {
 function seedAlerts(){
   if (!DEMO || store.alerts.length) return;
   for(const s of stations)for(const {rule,severity,value} of evaluateTelemetry(s)){
-    createAlert(s,rule,severity,value,{demo:true});store.active[s.id+':'+rule.id]={severity,lastNotice:Date.now()};
+    createAlert(s,rule,severity,value,{demo:true,dataClassification:'SIMULATED_LAB'});store.active[s.id+':'+rule.id]={severity,lastNotice:Date.now()};
   }
   saveNow();
 }
 seedAlerts();
 let lastTelegramSend=0,sending=false;
 async function processQueue() {
-  if(sending||!BOT||!CHAT)return;
+  if(sending)return;
   const job=store.queue.find(x=>x.status==='pending' && x.nextAt<=Date.now());if(!job)return;
+  const isMock = Boolean(job.mock || job.mode === 'mock');
+  if(!isMock && !BOT && !CHAT && !TEST_BOT && !TEST_CHAT) return;
   const gap=Date.now()-lastTelegramSend;if(gap<SEND_GAP)return;
   const alert=store.alerts.find(x=>x.id===job.alertId);if(!alert){job.status='failed';job.lastError='Missing alert';saveSoon();return;}
   sending=true;lastTelegramSend=Date.now();job.attempt++;
+
+  if(isMock) {
+    try {
+      if(job.simulatedOutcome === 'failure') throw new Error('Simulated Telegram 500: Mock delivery failed');
+      job.status='sent';job.sentAt=now();job.messageId='MOCK-'+Date.now();job.mockNotice='MOCK / NOT ACTUALLY SENT';
+    } catch(err) {
+      job.lastError=String(err.message).slice(0,180);
+      if(job.attempt>=6){job.status='failed';}else{job.nextAt=Date.now()+Math.min(300_000,3000*2**(job.attempt-1));}
+    } finally {
+      sending=false;store.queue=store.queue.slice(-500);saveSoon();broadcast();
+    }
+    return;
+  }
+
+  const targetBot = job.useTestBot ? (TEST_BOT || BOT) : BOT;
+  const targetChat = job.useTestBot ? (TEST_CHAT || CHAT) : CHAT;
+  if(!targetBot || !targetChat) {
+    job.status='failed';job.lastError='Telegram bot or chat not configured';sending=false;saveSoon();broadcast();return;
+  }
+
   try {
-    const response=await fetch(`${TELEGRAM_BASE}/bot${BOT}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:CHAT,text:alertMessage(alert),disable_web_page_preview:true}),signal:AbortSignal.timeout(8000)});
+    const response=await fetch(`${TELEGRAM_BASE}/bot${targetBot}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:targetChat,text:alertMessage(alert),disable_web_page_preview:true}),signal:AbortSignal.timeout(8000)});
     const answer=await response.json();
     if(!response.ok||!answer.ok) throw new Error(`Telegram HTTP ${response.status}: ${answer.description||'Unknown'}`);
     job.status='sent';job.sentAt=now();job.messageId=answer.result?.message_id;
@@ -260,7 +317,7 @@ async function processQueue() {
 }
 setInterval(processQueue,950).unref();
 // A silent station cannot send online=false itself. Detect stale telemetry centrally.
-if(!DEMO) setInterval(()=>{for(const s of stations)if(s.hasTelemetry && s.online && Date.now()-new Date(s.lastSeen).getTime()>STALE_AFTER_MS){s.online=false;processRules(s,{demo:false});broadcast();}},10_000).unref();
+if(!DEMO) setInterval(()=>{for(const s of stations)if(s.hasTelemetry && s.online && Date.now()-new Date(s.lastSeen).getTime()>STALE_AFTER_MS){s.online=false;const isSim=s.dataClassification==='SIMULATED_LAB'||Boolean(s.hasSimulatedLabIncident);processRules(s,{demo:isSim,dataClassification:s.dataClassification});broadcast();}},10_000).unref();
 if(DEMO) setInterval(()=>{
   const i=Math.floor(Math.random()*stations.length),s=stations[i];
   s.pressureBar=num(Math.max(0,Math.min(6,s.pressureBar+(Math.random()-.5)*.065)),2);
@@ -502,16 +559,15 @@ async function handler(req, res) {
 
   if (req.method === 'GET' && p === '/api/auth/status') {
     const sess = getSessionFromReq(req);
-    if (sess) {
-      return reply(res, 200, { authenticated: true, role: sess.role, requireAuth: REQUIRE_AUTH_FOR_READ });
-    }
-    if (checkKey(req)) {
-      return reply(res, 200, { authenticated: true, role: 'admin', requireAuth: REQUIRE_AUTH_FOR_READ });
-    }
-    if (checkReadKey(req)) {
-      return reply(res, 200, { authenticated: true, role: 'viewer', requireAuth: REQUIRE_AUTH_FOR_READ });
-    }
-    return reply(res, 200, { authenticated: false, role: null, requireAuth: REQUIRE_AUTH_FOR_READ });
+    const role = sess?.role || (checkKey(req) ? 'admin' : (checkReadKey(req) ? 'viewer' : null));
+    return reply(res, 200, {
+      authenticated: Boolean(role),
+      role,
+      requireAuth: REQUIRE_AUTH_FOR_READ,
+      env: APP_ENV,
+      simulationEnabled: APP_ENV !== 'production',
+      telegramMode: Boolean(BOT && CHAT) ? 'real' : 'mock'
+    });
   }
 
   if (req.method === 'POST' && p === '/api/auth/logout') {
@@ -530,7 +586,16 @@ async function handler(req, res) {
     return res.end(JSON.stringify({ ok: true, authenticated: false }));
   }
 
-  if (req.method === 'GET' && p === '/api/health') return reply(res, 200, { ok: true, mode: DEMO ? 'demo' : 'live-ingest', telegramConfigured: Boolean(BOT && CHAT), authEnforced: REQUIRE_AUTH_FOR_READ, uptimeSeconds: Math.round(process.uptime()) });
+  if (req.method === 'GET' && p === '/api/health') return reply(res, 200, {
+    ok: true,
+    mode: DEMO ? 'demo' : 'live-ingest',
+    env: APP_ENV,
+    telegramConfigured: Boolean(BOT && CHAT),
+    telegramMode: Boolean(BOT && CHAT) ? 'real' : 'mock',
+    simulationEnabled: APP_ENV !== 'production',
+    authEnforced: REQUIRE_AUTH_FOR_READ,
+    uptimeSeconds: Math.round(process.uptime())
+  });
   if (req.method === 'GET' && p === '/api/state') {
     if (!checkReadKey(req)) return reply(res, 401, { error: 'Authentication required to access state' });
     return reply(res, 200, snapshot());
@@ -664,8 +729,7 @@ async function handler(req, res) {
         s[fld]=val;
       }
       s.online=overallQuality==='GOOD';
-      s.lastSeen=now();
-      processRules(s,{demo:false});
+      processRules(s, { demo: DEMO, dataClassification: s.dataClassification });
       const avg=field=>{const a=stations.map(x=>x[field]).filter(v=>typeof v==='number');return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;};
       history.push({time:b.sourceTimestamp,pressure:num(avg('pressureBar'),2),flow:num(stations.reduce((a,x)=>a+(x.flowM3h||0),0)/1000,2),tank:num(avg('tankLevelPct'),1)});
       if(history.length>96) history.shift();
@@ -739,29 +803,92 @@ async function handler(req, res) {
     return reply(res, 200, {ok: true, alertId: alert.id});
   }
   if(req.method==='POST'&&p==='/api/demo/incident'){
-    if(!DEMO)return reply(res,403,{error:'Simulation disabled'});
-    if(!isLoopback(req)&&!checkKey(req))return reply(res,401,{error:'Admin key required for remote demo actions'});
-    const b=await body(req);const s=stations.find(x=>x.id===b.stationId)||stations.find(x=>x.id==='CM-01');
+    if(APP_ENV === 'production') return reply(res, 403, {error: 'Simulation disabled in production environment'});
+    if(!checkKey(req)) return reply(res, 403, {error: 'Admin authorization required for simulation'});
+    const b=await body(req);
+    if(b.stationId && !safeId(b.stationId)) return reply(res, 422, {error: 'Invalid stationId'});
+    const s=stations.find(x=>x.id===b.stationId)||stations.find(x=>x.id==='CM-01');
+    if(!s) return reply(res, 404, {error: 'Station not found'});
     const types={'pressure-low':{field:'pressureBar',value:0.64},'tank-low':{field:'tankLevelPct',value:12},'turbidity-high':{field:'turbidityNtu',value:5.8},'station-offline':{field:'online',value:false}};
-    const preset=types[b.type]||types['pressure-low'];s[preset.field]=preset.value;processRules(s,{demo:true});broadcast();return reply(res,200,{ok:true,stationId:s.id,status:statusOf(s)});
+    const preset=types[b.type]||types['pressure-low'];
+
+    const bounds={pressureBar:[0,15],tankLevelPct:[0,100],turbidityNtu:[0,1000]};
+    if(typeof preset.value==='number'){
+      const [lo,hi]=bounds[preset.field]||[0,10000];
+      if(preset.value<lo||preset.value>hi) return reply(res,422,{error:'Simulation value out of bounds'});
+    }
+
+    s[preset.field]=preset.value;
+    s.dataClassification='SIMULATED_LAB';
+    s.hasSimulatedLabIncident=true;
+    s.lastSeen=now();
+    s.hasTelemetry=true;
+    processRules(s,{demo:true,dataClassification:'SIMULATED_LAB'});
+
+    const avg=field=>{const a=stations.map(x=>x[field]).filter(v=>typeof v==='number');return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;};
+    history.push({time:now(),pressure:num(avg('pressureBar'),2),flow:num(stations.reduce((a,x)=>a+(x.flowM3h||0),0)/1000,2),tank:num(avg('tankLevelPct'),1)});
+    if(history.length>96) history.shift();
+
+    broadcast();
+    return reply(res,200,{ok:true,stationId:s.id,type:b.type,status:statusOf(s),dataClassification:'SIMULATED_LAB',demo:true});
   }
   if(req.method==='POST'&&p==='/api/demo/reset'){
-    if(!DEMO)return reply(res,403,{error:'Simulation disabled'});
-    if(!isLoopback(req)&&!checkKey(req))return reply(res,401,{error:'Admin key required'});
-    for(const s of stations){s.pressureBar=2.65;s.tankLevelPct=75;s.turbidityNtu=.45;s.chlorineMgL=.52;s.online=true;processRules(s,{demo:true});}
-    broadcast();return reply(res,200,{ok:true});
+    if(APP_ENV === 'production') return reply(res, 403, {error: 'Simulation reset disabled in production environment'});
+    if(!checkKey(req)) return reply(res, 403, {error: 'Admin authorization required for simulation reset'});
+    let resetCount=0;
+    for(const s of stations){
+      if(s.hasSimulatedLabIncident || (DEMO && !s.hasTelemetry)){
+        s.pressureBar=2.65;s.tankLevelPct=75;s.turbidityNtu=.45;s.chlorineMgL=.52;s.online=true;
+        s.hasSimulatedLabIncident=false;
+        processRules(s,{demo:true,dataClassification:'SIMULATED_LAB'});
+        resetCount++;
+      }
+    }
+    for(const a of store.alerts){
+      if((a.demo || a.dataClassification==='SIMULATED_LAB') && !a.resolvedAt){
+        a.resolvedAt=now();
+      }
+    }
+    broadcast();
+    return reply(res,200,{ok:true,resetStations:resetCount});
   }
   if(req.method==='POST'&&p==='/api/queue/retry-failed'){
     if(!checkKey(req))return reply(res,401,{error:'Admin API key required'});
-    if(!BOT||!CHAT)return reply(res,422,{error:'Telegram not configured'});
-    let count=0;for(const j of store.queue)if(j.status==='failed'){j.status='pending';j.attempt=0;j.nextAt=Date.now();j.lastError=null;count++;}
+    let count=0;
+    for(const j of store.queue){
+      if(j.status==='failed' || (j.lastError && j.status==='pending')){
+        j.status='pending';
+        j.attempt=0;
+        j.nextAt=Date.now();
+        j.lastError=null;
+        if(j.simulatedOutcome==='failure') j.simulatedOutcome='success';
+        count++;
+      }
+    }
     saveSoon();broadcast();return reply(res,200,{ok:true,retried:count});
   }
   if(req.method==='POST'&&p==='/api/test-telegram'){
     if(!checkKey(req))return reply(res,401,{error:'Admin API key required'});
-    if(!BOT||!CHAT)return reply(res,422,{error:'Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env'});
-    const a={id:`TEST-${uid()}`,title:'ทดสอบการเชื่อมต่อ Telegram',severity:'info',stationName:'ศูนย์ควบคุม',region:'ทุกพื้นที่',message:'ข้อความทดสอบจาก AQUA COMMAND สำเร็จเมื่อ Telegram ยอมรับการส่ง',createdAt:now(),demo:true};
-    store.alerts.unshift(a);store.queue.push({id:uid(),alertId:a.id,status:'pending',attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null});saveSoon();broadcast();return reply(res,202,{ok:true,queued:true,id:a.id});
+    const b=await body(req);
+    const mode=b.mode || (APP_ENV === 'lab' || !BOT || !CHAT ? 'mock' : 'real');
+
+    if(mode === 'real') {
+      if(!b.confirmRealSend) return reply(res, 400, {error: 'Confirmation required for real Telegram send (confirmRealSend: true)'});
+      const realBot=TEST_BOT || BOT;
+      const realChat=TEST_CHAT || CHAT;
+      if(!realBot || !realChat) return reply(res, 422, {error: 'Real Telegram credentials not configured. Use Mock Telegram mode.'});
+      const a={id:`TEST-${uid()}`,title:'ทดสอบการเชื่อมต่อ Telegram (REAL TEST)',severity:'info',stationName:'ศูนย์ควบคุม',region:'ทุกพื้นที่',message:'ข้อความทดสอบจาก AQUA COMMAND ส่งไปยังกลุ่มทดสอบเฉพาะ',createdAt:now(),demo:true,dataClassification:'SIMULATED_LAB'};
+      store.alerts.unshift(a);
+      store.queue.push({id:uid(),alertId:a.id,status:'pending',mode:'real',useTestBot:Boolean(TEST_BOT&&TEST_CHAT),mock:false,attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null});
+      saveSoon();broadcast();return reply(res,202,{ok:true,queued:true,id:a.id,mode:'real'});
+    }
+
+    // MOCK TELEGRAM TEST
+    const outcome=b.outcome || 'success';
+    const a={id:`TEST-${uid()}`,title:'ทดสอบระบบคิว Telegram (MOCK TEST)',severity:'info',stationName:'ศูนย์ควบคุม',region:'ทุกพื้นที่',message:'จำลองการส่งข้อความแจ้งเตือน (MOCK / NOT ACTUALLY SENT)',createdAt:now(),demo:true,dataClassification:'SIMULATED_LAB'};
+    store.alerts.unshift(a);
+    store.queue.push({id:uid(),alertId:a.id,status:'pending',mode:'mock',mock:true,simulatedOutcome:outcome,attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null,mockNotice:'MOCK / NOT ACTUALLY SENT'});
+    saveSoon();broadcast();return reply(res,202,{ok:true,queued:true,id:a.id,mode:'mock',simulatedOutcome:outcome,notice:'MOCK / NOT ACTUALLY SENT (No external request made)'});
   }
   const ack=p.match(/^\/api\/alerts\/([A-Za-z0-9-]+)\/ack$/);
   if(req.method==='POST'&&ack){if(!checkKey(req))return reply(res,401,{error:'Admin API key required'});const a=store.alerts.find(x=>x.id===ack[1]);if(!a)return reply(res,404,{error:'Alert not found'});a.acknowledgedAt=now();saveSoon();broadcast();return reply(res,200,{ok:true});}

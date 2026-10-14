@@ -15,7 +15,7 @@ test('fresh ingest, dedup, escalation, resolution, RBAC and export', {timeout:15
  fs.cpSync(path.join(root,'public'),path.join(tmp,'public'),{recursive:true});
  fs.mkdirSync(path.join(tmp,'storage'));
  const port=await openPort();
- const env={...process.env,DEMO_MODE:'false',HOST:'127.0.0.1',PORT:String(port),ADMIN_API_KEY:KEY,TELEGRAM_BOT_TOKEN:'',TELEGRAM_CHAT_ID:''};
+ const env={...process.env,APP_ENV:'production',DEMO_MODE:'false',HOST:'127.0.0.1',PORT:String(port),ADMIN_API_KEY:KEY,TELEGRAM_BOT_TOKEN:'',TELEGRAM_CHAT_ID:''};
  const child=spawn(process.execPath,[path.join(tmp,'server.mjs')],{cwd:tmp,env,stdio:'pipe'});
  const base=`http://127.0.0.1:${port}`;
  async function req(url,body,key=KEY){return fetch(base+url,{method:'POST',headers:{'Content-Type':'application/json',...(key?{'X-API-Key':key}:{})},body:JSON.stringify(body)});}

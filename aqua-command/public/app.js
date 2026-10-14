@@ -51,6 +51,10 @@ let state = {
   filter: 'all',
   range: '24h',
   adminKey: '',
+  role: 'viewer',
+  env: 'lab',
+  simulationEnabled: true,
+  telegramMode: 'mock',
   demoStation: 'CM-01',
   demoType: 'pressure-low',
   toast: null,
@@ -165,6 +169,13 @@ function render() {
             <span class="pulse-dot" style="${live ? '' : 'background:var(--warning)'}"></span>
             ${live ? 'CONNECTED' : 'RECONNECTING'}
           </span>
+          <div class="divider-vertical"></div>
+          <span class="status-pill" style="${state.role === 'admin' ? 'border-color:rgba(16,185,129,0.4);background:rgba(16,185,129,0.12);color:#34d399;' : 'border-color:rgba(2,132,199,0.4);background:rgba(2,132,199,0.12);color:#38bdf8;'}font-weight:700;font-size:11px;">
+            ${state.role === 'admin' ? '🛡️ ADMIN' : '👁️ VIEWER (READ-ONLY)'}
+          </span>
+          ${state.role !== 'admin' ?
+            `<button class="button button-tiny" data-action="switchAdmin" style="padding:4px 8px;font-size:11px;background:#0284c7;color:#fff;border-radius:4px;cursor:pointer;">สลับเป็น Admin</button>` :
+            `<button class="button button-tiny button-ghost" data-action="logout" style="padding:4px 8px;font-size:11px;">ออกจากระบบ</button>`}
           <div class="divider-vertical"></div>
           <div class="header-time">
             <div class="clock" id="clock">${new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date())} ICT</div>
@@ -632,12 +643,14 @@ function alertRow(a) {
       </div>
       <div class="alert-copy">
         <h4>
-          <span>${esc(a.title)}${a.demo ? ' <small style="color:var(--warning)">[DEMO]</small>' : ''}</span>
+          <span>${esc(a.title)}${a.dataClassification === 'SIMULATED_LAB' ? ' <small style="color:var(--warning)">[SIMULATED_LAB]</small>' : (a.demo ? ' <small style="color:var(--warning)">[DEMO]</small>' : '')}</span>
           <span>${relative(a.createdAt)}</span>
         </h4>
         <p>${esc(a.stationName)} · ${esc(a.message)}</p>
         <div class="alert-actions-row">
-          <span class="telegram-tag">${icon('send')} Telegram Alerted</span>
+          <span class="telegram-tag" style="${(a.demo || a.dataClassification === 'SIMULATED_LAB') ? 'background:rgba(245,158,11,0.12);color:#fbbf24;border-color:rgba(245,158,11,0.25);' : ''}">
+            ${icon('send')} ${(a.demo || a.dataClassification === 'SIMULATED_LAB') ? 'MOCK QUEUE (NOT SENT)' : (state.data?.telegram?.configured ? 'Telegram Alerted' : 'Telegram Off')}
+          </span>
           ${a.acknowledgedAt ? 
             `<small style="color:var(--success)">${icon('check')} รับทราบแล้ว</small>` : 
             `<button class="button button-tiny" data-ack="${esc(a.id)}">รับทราบ</button>`}
@@ -939,80 +952,177 @@ function analyticsPage() {
 // ---------------- 6. SETTINGS & TELEGRAM GATEWAY PAGE ----------------
 function settingsPage() {
   const d = state.data;
+  const isAdmin = state.role === 'admin';
   return `
     ${heading(
       'GATEWAY CONFIGURATION & SECURITY',
       'ตั้งค่าระบบและ Telegram Gateway',
       'ตรวจสอบสถานะการเชื่อมต่อ Bot แจ้งเตือน คิวส่งข้อความ และเกณฑ์แจ้งเตือนของระบบ',
-      actionButton('test', icon('send') + ' ส่งข้อความทดสอบจริง', 'button-primary')
+      isAdmin ? actionButton('testMockSuccess', icon('send') + ' ทดสอบ Mock Telegram', 'button-primary') : ''
     )}
 
+    <!-- Security & Role Profile Banner -->
+    <div class="panel" style="margin-bottom:16px;padding:16px 20px;border-left:4px solid ${isAdmin ? 'var(--success)' : 'var(--primary)'};">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Distributed Environment & Access Role</div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:16px;font-weight:700;color:var(--foreground);">
+              ${isAdmin ? '🛡️ ADMIN SESSION (Full Control)' : '👁️ VIEWER SESSION (Read-Only Access)'}
+            </span>
+            <span class="status-pill" style="font-size:10px;text-transform:uppercase;">
+              ENV: ${esc(d.env || 'lab')}
+            </span>
+            <span class="status-pill ${d.simulation?.enabled ? '' : 'warning'}" style="font-size:10px;">
+              SIMULATION: ${d.simulation?.enabled ? 'ENABLED' : 'DISABLED'}
+            </span>
+          </div>
+        </div>
+        <div>
+          ${!isAdmin ?
+            `<button class="button button-tiny" data-action="switchAdmin" style="background:#0284c7;color:#fff;padding:6px 12px;font-size:12px;">สลับสิทธิ์เป็น Admin</button>` :
+            `<button class="button button-tiny button-ghost" data-action="logout" style="padding:6px 12px;font-size:12px;">ออกจากระบบ</button>`}
+        </div>
+      </div>
+    </div>
+
     <div class="overview-grid">
+      <!-- Mock Telegram Testing (Zero Outbound Network Calls) -->
       <div class="panel">
         <div class="panel-head">
           <div>
-            <div class="panel-title">${icon('send')} Telegram Notification Gateway</div>
-            <div class="panel-caption">ระบบส่งข้อความแจ้งเตือนอัตโนมัติผ่าน Telegram Bot API</div>
+            <div class="panel-title">${icon('send')} Mock Telegram Gateway (Lab Mode)</div>
+            <div class="panel-caption">ระบบจำลองการส่งแจ้งเตือนในห้องปฏิบัติการ (Zero External Requests)</div>
           </div>
-          <span class="status-pill ${d.telegram.configured ? '' : 'warning'}">
-            ${d.telegram.configured ? 'CONFIGURED' : 'NOT CONFIGURED'}
+          <span class="status-pill" style="border-color:rgba(16,185,129,0.4);background:rgba(16,185,129,0.12);color:#34d399;">
+            READY (LAB SAFE)
           </span>
         </div>
 
         <div style="padding:18px">
-          <p style="font-size:11.5px;color:#ABC4D8;margin-bottom:12px">
-            กำหนดค่าในไฟล์ <code>.env</code> ฝั่งเซิร์ฟเวอร์เพื่อให้ระบบส่งข้อความแจ้งเตือนไปยังกลุ่มปฏิบัติการ:
+          <p style="font-size:12px;color:#ABC4D8;margin-bottom:14px;line-height:1.6">
+            โหมดทดสอบจำลอง (Mock Mode) ช่วยให้สามารถทดสอบคิว Logic, Status transitions, Failure handling และ Retry mechanism ได้ทันทีในห้องปฏิบัติการ <b>โดยไม่มีการส่งข้อมูลออกนอกเครื่อง</b>
           </p>
-          <div style="background:#071526;border:1px solid var(--border);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;color:#7DE8F5;margin-bottom:14px;line-height:1.7">
-TELEGRAM_BOT_TOKEN=your_bot_token<br>
-TELEGRAM_CHAT_ID=your_chat_id<br>
-ADMIN_API_KEY=your_secret_admin_key<br>
-SEND_DEMO_ALERTS=false
-          </div>
 
-          <label class="field-label" for="admin-key">Admin API Key (สำหรับเรียก API ป้องกันความปลอดภัย)</label>
-          <input id="admin-key" type="password" class="field" data-focus="admin-key" placeholder="กรอก ADMIN_API_KEY จาก .env" value="${esc(state.adminKey)}"/>
-
-          <div style="margin-top:16px;display:flex;gap:8px">
-            ${actionButton('test', icon('send') + ' ส่งข้อความทดสอบ Telegram', 'button-primary')}
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              ${actionButton('testMockSuccess', icon('send') + ' ทดสอบ Mock Success (จำลองส่งสำเร็จ)', 'button-primary', isAdmin ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"')}
+              ${actionButton('testMockFailure', icon('warning') + ' ทดสอบ Mock Failure (จำลองล้มเหลว)', 'button-ghost', isAdmin ? 'style="color:var(--critical);border-color:rgba(239,68,68,0.4);"' : 'disabled style="opacity:0.5;cursor:not-allowed;"')}
+            </div>
+            ${!isAdmin ? `<small class="muted" style="color:var(--warning);">${icon('info')} ต้องใช้สิทธิ์ Admin เพื่อสั่งทดสอบคิว</small>` : ''}
           </div>
         </div>
       </div>
 
+      <!-- Real Telegram Gateway (Off by Default in Lab) -->
       <div class="panel">
         <div class="panel-head">
           <div>
-            <div class="panel-title">${icon('server')} สถานะคิวและอัตราการส่ง (Queue Stats)</div>
-            <div class="panel-caption">Telegram Delivery Queue & Rate Limiter</div>
+            <div class="panel-title">${icon('sliders')} Real Telegram Bot Gateway</div>
+            <div class="panel-caption">การเชื่อมต่อ Telegram Bot API ภายนอก</div>
           </div>
+          <span class="status-pill ${d.telegram?.configured ? '' : 'warning'}">
+            ${d.telegram?.configured ? 'CONFIGURED' : 'OFF BY DEFAULT'}
+          </span>
         </div>
 
         <div style="padding:18px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-            <div class="notice-box">
-              <div style="font-size:10px;color:var(--muted)">ส่งสำเร็จ</div>
-              <div style="font-size:24px;font-weight:800;color:var(--success);margin:4px 0">${d.queueStats.sent}</div>
-              <div style="font-size:9.5px;color:var(--muted)">DELIVERED</div>
-            </div>
-            <div class="notice-box">
-              <div style="font-size:10px;color:var(--muted)">กำลังรอส่ง</div>
-              <div style="font-size:24px;font-weight:800;color:var(--primary);margin:4px 0">${d.queueStats.pending}</div>
-              <div style="font-size:9.5px;color:var(--muted)">PENDING / RETRY</div>
-            </div>
-            <div class="notice-box">
-              <div style="font-size:10px;color:var(--muted)">ล้มเหลว</div>
-              <div style="font-size:24px;font-weight:800;color:var(--critical);margin:4px 0">${d.queueStats.failed}</div>
-              <div style="font-size:9.5px;color:var(--muted)">FAILED</div>
-            </div>
-            <div class="notice-box">
-              <div style="font-size:10px;color:var(--muted)">ส่งเตือนซ้ำ</div>
-              <div style="font-size:24px;font-weight:800;color:var(--warning);margin:4px 0">${d.telegram.reminderMinutes} <small style="font-size:11px">นาที</small></div>
-              <div style="font-size:9.5px;color:var(--muted)">COOLDOWN</div>
-            </div>
+          <p style="font-size:12px;color:#ABC4D8;margin-bottom:12px;line-height:1.6">
+            ${d.telegram?.configured ?
+              `กำหนดค่า Telegram Bot เรียบร้อยแล้ว (${esc(d.telegram.group)})` :
+              `ใน Lab Profile (.env.lab) การส่ง Telegram จริงถูกปิดไว้เป็นค่าเริ่มต้น เพื่อความปลอดภัยและป้องกันข้อความรั่วไหล`}
+          </p>
+
+          <div style="background:#071526;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:11px;color:#7DE8F5;margin-bottom:14px;line-height:1.6">
+            TELEGRAM_BOT_TOKEN=${d.telegram?.configured ? '••••••••' : '(ไม่ได้กำหนดใน .env.lab)'}<br>
+            TELEGRAM_CHAT_ID=${d.telegram?.configured ? esc(d.telegram.group) : '(ไม่ได้กำหนด)'}<br>
+            TEST_CONFIRMATION_REQUIRED=true
           </div>
 
-          ${actionButton('retry', icon('refresh') + ' Retry Failed Messages', 'button-ghost')}
+          <div style="display:flex;gap:8px;">
+            ${(isAdmin && (d.telegram?.configured || d.telegram?.testConfigured)) ?
+              actionButton('testReal', icon('send') + ' ส่งข้อความจริง (ต้องยืนยัน)', 'button-warning') :
+              `<button class="button button-ghost" disabled style="opacity:0.5;cursor:not-allowed;">🔒 ส่ง Telegram จริง (ปิดใช้งานใน Lab)</button>`}
+          </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Queue Stats & Recent Items -->
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">${icon('server')} สถานะคิวและประวัติการส่ง (Delivery Queue & Rate Limiter)</div>
+          <div class="panel-caption">ตรวจสอบรายการส่งในคิวทั้งโหมด Mock และ Real</div>
+        </div>
+        ${isAdmin ? actionButton('retry', icon('refresh') + ' Retry รายการที่ล้มเหลว', 'button-ghost') : ''}
+      </div>
+
+      <div style="padding:18px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;margin-bottom:16px">
+          <div class="notice-box">
+            <div style="font-size:10px;color:var(--muted)">ส่งจริงสำเร็จ</div>
+            <div style="font-size:24px;font-weight:800;color:var(--success);margin:4px 0">${d.queueStats?.sent - (d.queueStats?.mockSent || 0)}</div>
+            <div style="font-size:9.5px;color:var(--muted)">REAL SENT</div>
+          </div>
+          <div class="notice-box">
+            <div style="font-size:10px;color:var(--muted)">จำลองสำเร็จ (Mock)</div>
+            <div style="font-size:24px;font-weight:800;color:#38bdf8;margin:4px 0">${d.queueStats?.mockSent || 0}</div>
+            <div style="font-size:9.5px;color:var(--muted)">MOCK DELIVERED</div>
+          </div>
+          <div class="notice-box">
+            <div style="font-size:10px;color:var(--muted)">กำลังรอส่ง / Retry</div>
+            <div style="font-size:24px;font-weight:800;color:var(--primary);margin:4px 0">${d.queueStats?.pending || 0}</div>
+            <div style="font-size:9.5px;color:var(--muted)">PENDING</div>
+          </div>
+          <div class="notice-box">
+            <div style="font-size:10px;color:var(--muted)">ล้มเหลว</div>
+            <div style="font-size:24px;font-weight:800;color:var(--critical);margin:4px 0">${d.queueStats?.failed || 0}</div>
+            <div style="font-size:9.5px;color:var(--muted)">FAILED</div>
+          </div>
+          <div class="notice-box">
+            <div style="font-size:10px;color:var(--muted)">รอบเตือนซ้ำ</div>
+            <div style="font-size:24px;font-weight:800;color:var(--warning);margin:4px 0">${d.telegram?.reminderMinutes || 30} <small style="font-size:11px">นาที</small></div>
+            <div style="font-size:9.5px;color:var(--muted)">COOLDOWN</div>
+          </div>
+        </div>
+
+        ${d.queueRecent && d.queueRecent.length ? `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Job ID / Alert</th>
+                  <th>โหมด</th>
+                  <th>สถานะ</th>
+                  <th>ความพยายาม</th>
+                  <th>เวลา</th>
+                  <th>หมายเหตุ / ข้อผิดพลาด</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${d.queueRecent.map(q => `
+                  <tr>
+                    <td><b>${esc(q.id)}</b><br><small class="muted">${esc(q.alertId)}</small></td>
+                    <td>
+                      <span class="status-pill" style="font-size:9px;${q.mock ? 'border-color:rgba(56,189,248,0.4);background:rgba(56,189,248,0.1);color:#38bdf8;' : 'border-color:rgba(16,185,129,0.4);background:rgba(16,185,129,0.1);color:#34d399;'}">
+                        ${q.mock ? '🧪 MOCK' : '📤 REAL'}
+                      </span>
+                    </td>
+                    <td><span class="state-tag ${q.status === 'sent' ? 'normal' : q.status === 'failed' ? 'critical' : 'warning'}">${q.status.toUpperCase()}</span></td>
+                    <td>ครั้งที่ ${q.attempt}</td>
+                    <td><small>${relative(q.createdAt)}</small></td>
+                    <td>
+                      ${q.mockNotice ? `<small style="color:#fbbf24;">${esc(q.mockNotice)}</small>` : ''}
+                      ${q.lastError ? `<small style="color:var(--critical);">${esc(q.lastError)}</small>` : ''}
+                      ${(!q.mockNotice && !q.lastError) ? '<small class="muted">—</small>' : ''}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : '<div class="blank-state">ยังไม่มีรายการส่งในคิว</div>'}
       </div>
     </div>
 
@@ -1103,17 +1213,30 @@ function drawer() {
 
 function modal() {
   if (state.modal !== 'demo') return '';
+  const isAdmin = state.role === 'admin';
   return `
     <div class="modal-scrim" data-action="closeModal">
       <div class="modal" role="dialog" aria-modal="true" aria-label="จำลองเหตุการณ์" data-stop="true">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <h2>จำลองเหตุผิดปกติ</h2>
+          <h2>จำลองเหตุผิดปกติ (Lab Simulation)</h2>
           <button class="icon-btn" data-action="closeModal" aria-label="ปิด">${icon('close')}</button>
         </div>
-        <p>เลือกสถานีในจังหวัดเชียงใหม่ และประเภทเหตุการณ์ เพื่อทดสอบระบบตรวจจับและแจ้งเตือน</p>
+        <p>เลือกสถานีในจังหวัดเชียงใหม่ และประเภทเหตุการณ์ เพื่อทดสอบระบบตรวจจับและแจ้งเตือนในห้องปฏิบัติการ</p>
+
+        ${!isAdmin ? `
+          <div class="notice-box warning" style="margin-bottom:14px;border-color:rgba(245,158,11,0.4);background:rgba(245,158,11,0.08);">
+            <b>${icon('warning')} สิทธิ์การใช้งานไม่เพียงพอ:</b> คุณกำลังเข้าสู่ระบบในฐานะ <b>Viewer (อ่านอย่างเดียว)</b><br>
+            การจำลองเหตุการณ์สงวนสิทธิ์เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น<br>
+            <button class="button button-tiny" data-action="switchAdmin" style="margin-top:8px;background:#0284c7;color:#fff;">สลับสิทธิ์เป็น Admin</button>
+          </div>
+        ` : `
+          <div class="notice-box info" style="margin-bottom:14px;border-color:rgba(2,132,199,0.4);background:rgba(2,132,199,0.08);">
+            ${icon('info')} ข้อมูลจำลองจะติดแท็ก <code>[SIMULATED_LAB]</code> และเข้า Mock Queue อัตโนมัติ โดยไม่ส่งผลกระทบต่อ Telemetry ของ Gateway จริง
+          </div>
+        `}
 
         <label class="field-label" for="demoStation">สถานีในจังหวัดเชียงใหม่</label>
-        <select class="field" id="demoStation">
+        <select class="field" id="demoStation" ${!isAdmin ? 'disabled' : ''}>
           ${state.data.stations.map(s => `
             <option value="${s.id}" ${s.id === state.demoStation ? 'selected' : ''}>
               ${s.name} (${s.id} - ${s.district || s.region})
@@ -1122,20 +1245,23 @@ function modal() {
         </select>
 
         <label class="field-label" for="demoType">ประเภทเหตุผิดปกติ</label>
-        <select class="field" id="demoType">
+        <select class="field" id="demoType" ${!isAdmin ? 'disabled' : ''}>
           <option value="pressure-low" ${state.demoType === 'pressure-low' ? 'selected' : ''}>แรงดันน้ำต่ำวิกฤต (&lt; 0.9 bar)</option>
           <option value="tank-low" ${state.demoType === 'tank-low' ? 'selected' : ''}>ระดับถังเก็บน้ำต่ำวิกฤต (&lt; 20%)</option>
           <option value="turbidity-high" ${state.demoType === 'turbidity-high' ? 'selected' : ''}>ความขุ่นสูงผิดปกติ (&gt; 4.0 NTU)</option>
           <option value="station-offline" ${state.demoType === 'station-offline' ? 'selected' : ''}>สถานีขาดการเชื่อมต่อ (Offline)</option>
         </select>
 
-        <div class="notice-box warning" style="margin-top:14px">
-          ${icon('info')} ข้อมูลจำลองจะไม่ถูกส่งไปยัง Telegram อัตโนมัติ เว้นแต่กำหนด <code>SEND_DEMO_ALERTS=true</code>
-        </div>
-
-        <div class="modal-actions">
-          ${actionButton('closeModal', 'ยกเลิก', 'button-ghost')}
-          ${actionButton('simulate', icon('activity') + ' จำลองเหตุการณ์', 'button-primary')}
+        <div class="modal-actions" style="margin-top:18px;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            ${isAdmin ? actionButton('reset', icon('refresh') + ' ล้างค่าจำลอง', 'button-ghost', 'style="color:var(--warning);border-color:rgba(245,158,11,0.4);"') : ''}
+          </div>
+          <div style="display:flex;gap:8px;">
+            ${actionButton('closeModal', 'ยกเลิก', 'button-ghost')}
+            ${isAdmin ?
+              actionButton('simulate', icon('activity') + ' จำลองเหตุการณ์', 'button-primary') :
+              `<button class="button button-primary" disabled style="opacity:0.5;cursor:not-allowed;">จำลองเหตุการณ์ (ต้องใช้สิทธิ์ Admin)</button>`}
+          </div>
         </div>
       </div>
     </div>
@@ -1168,38 +1294,115 @@ async function runAction(name, extra) {
     if (name === 'closeModal') { state.modal = null; render(); return; }
     if (name === 'closeDrawer') { state.selected = null; render(); return; }
     if (name === 'setMapFilter') { state.mapFilter = extra; render(); return; }
+    if (name === 'switchAdmin') {
+      let key = prompt('กรอกรหัสผ่าน Admin (ADMIN_API_KEY) เพื่อรับสิทธิ์ควบคุมเต็ม:');
+      if (!key) return;
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: key.trim() })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.role === 'admin') {
+          state.role = 'admin';
+          state.adminKey = key.trim();
+          notify('ยืนยันสิทธิ์ Admin เรียบร้อยแล้ว');
+          await refreshAuthStatus();
+          render();
+        } else {
+          notify(data.error || 'รหัสผ่าน Admin ไม่ถูกต้อง', true);
+        }
+      } catch (err) {
+        notify('เข้าสู่ระบบไม่สำเร็จ: ' + err.message, true);
+      }
+      return;
+    }
+    if (name === 'logout') {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        state.role = 'viewer';
+        state.adminKey = '';
+        notify('ออกจากระบบแล้ว');
+        init();
+      } catch (err) {
+        notify('ออกจากระบบไม่สำเร็จ: ' + err.message, true);
+      }
+      return;
+    }
     if (name === 'simulate') {
+      if (state.role !== 'admin') {
+        notify('ต้องใช้สิทธิ์ Admin เพื่อจำลองเหตุการณ์', true);
+        return;
+      }
       state.demoStation = $('#demoStation').value;
       state.demoType = $('#demoType').value;
       const res = await sendReq('/api/demo/incident', 'POST', { stationId: state.demoStation, type: state.demoType });
       state.modal = null;
-      notify(`จำลองเหตุการณ์ที่สถานี ${res.stationId} สำเร็จ`);
+      notify(`จำลองเหตุการณ์ที่สถานี ${res.stationId} สำเร็จ [SIMULATED_LAB]`);
       return;
     }
     if (name === 'reset') {
-      if (!confirm('รีเซ็ตค่าจำลองทั้งหมดกลับสู่ปกติ?')) return;
-      await sendReq('/api/demo/reset');
-      notify('รีเซ็ตข้อมูลจำลองทุกสถานีกลับสู่ปกติแล้ว');
+      if (state.role !== 'admin') {
+        notify('ต้องใช้สิทธิ์ Admin เพื่อรีเซ็ตค่าจำลอง', true);
+        return;
+      }
+      if (!confirm('รีเซ็ตเฉพาะข้อมูลและเหตุการณ์จำลอง (SIMULATED_LAB) กลับสู่ปกติ?')) return;
+      const res = await sendReq('/api/demo/reset');
+      if (state.modal) state.modal = null;
+      notify(`รีเซ็ตข้อมูลจำลองเรียบร้อย (${res.resetStations || 0} สถานี)`);
+      return;
+    }
+    if (name === 'testMockSuccess') {
+      if (state.role !== 'admin') {
+        notify('ต้องใช้สิทธิ์ Admin สำหรับทดสอบคิว', true);
+        return;
+      }
+      const res = await sendReq('/api/test-telegram', 'POST', { mode: 'mock', outcome: 'success' });
+      notify(`เพิ่มข้อความจำลองเข้าคิวแล้ว: ${res.id} (MOCK / NOT ACTUALLY SENT)`);
+      return;
+    }
+    if (name === 'testMockFailure') {
+      if (state.role !== 'admin') {
+        notify('ต้องใช้สิทธิ์ Admin สำหรับทดสอบคิว', true);
+        return;
+      }
+      const res = await sendReq('/api/test-telegram', 'POST', { mode: 'mock', outcome: 'failure' });
+      notify(`เพิ่มข้อความจำลองแบบล้มเหลวเข้าคิวแล้ว: ${res.id} (ทดสอบ Retry ได้)`);
+      return;
+    }
+    if (name === 'testReal') {
+      if (state.role !== 'admin') {
+        notify('ต้องใช้สิทธิ์ Admin สำหรับส่งข้อความจริง', true);
+        return;
+      }
+      if (!confirm('⚠️ คำเตือน: คุณกำลังจะส่งข้อความแจ้งเตือนจริงไปยัง Telegram Bot!\n\nต้องการดำเนินการต่อหรือไม่?')) return;
+      const res = await sendReq('/api/test-telegram', 'POST', { mode: 'real', confirmRealSend: true });
+      notify(`เพิ่มข้อความจริงเข้าคิวส่งแล้ว (${res.id})`);
       return;
     }
     if (name === 'test') {
-      let key = state.adminKey || prompt('กรอก ADMIN_API_KEY จาก .env สำหรับส่งข้อความทดสอบ Telegram');
-      if (!key) return;
-      state.adminKey = key;
-      const result = await sendReq('/api/test-telegram');
-      notify(`เพิ่มข้อความทดสอบเข้าคิวส่งแล้ว (${result.id})`);
+      if (state.role !== 'admin' && !state.adminKey) {
+        let key = prompt('กรอก ADMIN_API_KEY จาก .env สำหรับส่งข้อความทดสอบ');
+        if (!key) return;
+        state.adminKey = key;
+      }
+      const res = await sendReq('/api/test-telegram', 'POST', { mode: 'mock', outcome: 'success' });
+      notify(`เพิ่มข้อความทดสอบเข้าคิวแล้ว (${res.id})`);
       return;
     }
     if (name === 'retry') {
-      let key = state.adminKey || prompt('กรอก ADMIN_API_KEY เพื่อ Retry ข้อความที่ล้มเหลว');
-      if (!key) return;
-      state.adminKey = key;
+      if (state.role !== 'admin' && !state.adminKey) {
+        let key = prompt('กรอก ADMIN_API_KEY เพื่อ Retry ข้อความที่ล้มเหลว');
+        if (!key) return;
+        state.adminKey = key;
+      }
       const r = await sendReq('/api/queue/retry-failed');
       notify(`นำรายการส่งล้มเหลวกลับเข้าคิว ${r.retried} รายการ`);
       return;
     }
     if (name === 'ack') {
-      if (!state.adminKey) {
+      if (state.role !== 'admin' && !state.adminKey) {
         let k = prompt('กรอก ADMIN_API_KEY เพื่อบันทึกการรับทราบเหตุ');
         if (!k) return;
         state.adminKey = k;
@@ -1209,12 +1412,14 @@ async function runAction(name, extra) {
       return;
     }
     if (name === 'csv') {
-      if (!state.adminKey) {
+      if (state.role !== 'admin' && !state.adminKey) {
         let k = prompt('กรอก ADMIN_API_KEY เพื่อ Export ข้อมูล');
         if (!k) return;
         state.adminKey = k;
       }
-      const r = await fetch('/api/export/alerts', { headers: { 'X-API-Key': state.adminKey } });
+      const headers = {};
+      if (state.adminKey) headers['X-API-Key'] = state.adminKey;
+      const r = await fetch('/api/export/alerts', { headers });
       if (!r.ok) throw Error(`Export ถูกปฏิเสธ (${r.status})`);
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
@@ -1341,8 +1546,22 @@ async function loadDistricts() {
   } catch (err) {}
 }
 
+async function refreshAuthStatus() {
+  try {
+    const r = await fetch('/api/auth/status');
+    if (r.ok) {
+      const data = await r.json();
+      state.role = data.role || (data.authenticated ? 'admin' : 'viewer');
+      state.env = data.env || 'lab';
+      state.simulationEnabled = Boolean(data.simulationEnabled);
+      state.telegramMode = data.telegramMode || 'mock';
+    }
+  } catch (err) {}
+}
+
 async function init() {
   try {
+    await refreshAuthStatus();
     const r = await fetch('/api/state');
     if (r.status === 401) {
       const appEl = $('#app');
@@ -1351,10 +1570,10 @@ async function init() {
           <div class="boot" style="max-width:440px;margin:60px auto;padding:32px;background:rgba(10,25,47,0.95);border:1px solid rgba(0,180,216,0.35);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.6);text-align:center;">
             <div style="font-size:36px;color:var(--accent,#00b4d8);margin-bottom:12px;">${icon('server')}</div>
             <h2 style="margin:0 0 8px;font-size:20px;color:#f8fafc;font-weight:600;">AQUA COMMAND · ยืนยันสิทธิ์การเข้าใช้งาน</h2>
-            <p style="color:#94a3b8;font-size:13px;margin:0 0 20px;line-height:1.5;">ระบบเปิดใช้งานโหมดความปลอดภัย (Distributed Lab Profile)<br/>กรุณากรอก Viewer Key เพื่อเข้าสู่ Dashboard</p>
+            <p style="color:#94a3b8;font-size:13px;margin:0 0 20px;line-height:1.5;">ระบบเปิดใช้งานโหมดความปลอดภัย (Distributed Lab Profile)<br/>กรุณากรอก Viewer Key หรือ Admin Key เพื่อเข้าสู่ Dashboard</p>
             <form id="aqua-login-form" style="display:flex;flex-direction:column;gap:14px;text-align:left;">
               <div>
-                <label style="display:block;font-size:12px;color:#cbd5e1;margin-bottom:6px;">Viewer Key / Passphrase</label>
+                <label style="display:block;font-size:12px;color:#cbd5e1;margin-bottom:6px;">Viewer / Admin Key</label>
                 <input id="aqua-login-key" type="password" placeholder="กรอกรหัสผ่านเพื่อเข้าใช้งาน" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:14px;" required />
               </div>
               <button type="submit" style="padding:11px 16px;font-weight:600;background:#0284c7;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;transition:background 0.2s;">เข้าสู่ระบบ (Sign In)</button>
@@ -1375,6 +1594,9 @@ async function init() {
               body: JSON.stringify({ key: keyInput?.value?.trim() })
             });
             if (res.ok) {
+              const resData = await res.json().catch(() => ({}));
+              if (resData.role) state.role = resData.role;
+              await refreshAuthStatus();
               init();
             } else {
               const err = await res.json().catch(() => ({}));

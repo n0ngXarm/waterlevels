@@ -22,8 +22,12 @@ export function evaluateTelemetry(station) {
 
 export function alertMessage(alert) {
   const icons = {critical: '🔴', warning: '🟠', resolved: '🟢', info: '🔵'};
-  const tag = alert.demo ? '[DEMO] ' : '';
+  const isSimulated = Boolean(alert.demo || alert.dataClassification === 'SIMULATED_LAB');
+  const tag = alert.dataClassification === 'SIMULATED_LAB' ? '[SIMULATED_LAB] ' : (alert.demo ? '[DEMO] ' : '');
   const area = alert.region ? (alert.region.includes('เชียงใหม่') ? alert.region : `${alert.region}, เชียงใหม่`) : 'จังหวัดเชียงใหม่';
+  const sourceLabel = isSimulated
+    ? (alert.dataClassification === 'SIMULATED_LAB' ? 'ข้อมูลจำลองห้องปฏิบัติการ (SIMULATED_LAB)' : 'ข้อมูลจำลอง / DEMO')
+    : 'ระบบตรวจวัด กปภ. เชียงใหม่';
   return `${icons[alert.severity] || '🔔'} ${tag}AQUA COMMAND — CHIANG MAI (${alert.severity.toUpperCase()})\n` +
     `ระดับ: ${alert.severity.toUpperCase()}\n` +
     `เหตุการณ์: ${alert.title}\n` +
@@ -32,5 +36,5 @@ export function alertMessage(alert) {
     `รายละเอียด: ${alert.message}\n` +
     `เวลา: ${new Intl.DateTimeFormat('th-TH', {timeZone:'Asia/Bangkok', dateStyle:'medium', timeStyle:'medium'}).format(new Date(alert.createdAt))}\n` +
     `รหัสเหตุการณ์: ${alert.id}\n` +
-    `แหล่งข้อมูล: ${alert.demo ? 'ข้อมูลจำลอง / DEMO' : 'ระบบตรวจวัด กปภ. เชียงใหม่'}`;
+    `แหล่งข้อมูล: ${sourceLabel}`;
 }
