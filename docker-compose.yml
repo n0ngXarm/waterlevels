@@ -1,0 +1,54 @@
+services:
+  # 1. AQUA COMMAND CENTER - Web Dashboard & Operations Center (Node.js)
+  aqua-command:
+    build:
+      context: ./aqua-command
+      dockerfile: Dockerfile
+    image: pwa-aqua-command:latest
+    container_name: pwa_aqua_command
+    restart: always
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+      TZ: Asia/Bangkok
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./aqua-command/storage:/app/storage
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 2. PWA Live Scraper, RTU Telemetry Feeder & Telegram Bot (Python)
+  pwa-water-alert:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pwa-water-alert:latest
+    container_name: pwa_water_alert
+    restart: always
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Bangkok
+      AQUA_COMMAND_URL: http://aqua-command:8787
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      aqua-command:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

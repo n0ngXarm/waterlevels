@@ -1,0 +1,5 @@
+.env
+storage/*.json
+!storage/.gitkeep
+node_modules/
+.DS_Store

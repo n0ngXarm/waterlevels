@@ -1,0 +1,25 @@
+services:
+  aqua-command:
+    build: .
+    container_name: aqua-command
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+    ports:
+      - "127.0.0.1:8787:8787" # Localhost only; use a secured reverse proxy / VPN for remote access
+    volumes:
+      - aqua-state:/app/storage
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 256m
+
+volumes:
+  aqua-state:
