@@ -50,13 +50,18 @@ try:
     with sqlite3.connect(src_path) as src_conn:
         try:
             src_conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
-        except Exception:
-            pass
+        except Exception as ce:
+            print(f'==> [WARN] WAL checkpoint notice: {ce}', file=sys.stderr)
         with sqlite3.connect(dest_path) as dest_conn:
             src_conn.backup(dest_conn)
+        with sqlite3.connect(dest_path) as chk_conn:
+            res = chk_conn.execute('PRAGMA integrity_check').fetchall()
+            if res != [('ok',)]:
+                raise RuntimeError(f'Snapshot integrity check failed: {res}')
 except Exception as e:
-    import shutil
-    shutil.copy2(src_path, dest_path)
+    print(f'==> [ERROR] SQLite Online Backup failed for {src_path}: {e}', file=sys.stderr)
+    print(f'==> [FAIL-CLOSED] Refusing raw file copy fallback to prevent page-tearing and corrupted snapshots.', file=sys.stderr)
+    sys.exit(1)
 " "$db" "$dest_db"
     fi
 done

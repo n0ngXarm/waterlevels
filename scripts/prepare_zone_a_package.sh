@@ -67,7 +67,7 @@ echo "    Class:      ${DATA_CLASSIFICATION}"
 echo "    Buffer DB:  ${ZONE_A_BUFFER_DB}"
 
 # Run collector without passing secrets on commandline (read from env)
-exec python3 tools/simulated_edge_collector.py
+exec python3 tools/simulated_edge_collector.py "$@"
 EOF
 chmod +x "${STAGE_DIR}/run_collector.sh"
 

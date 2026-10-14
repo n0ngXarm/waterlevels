@@ -37,11 +37,11 @@ def parse_args():
     parser.add_argument("--station", default=os.getenv("ZONE_A_STATION_ID", "CM-01"), help="Target Station ID (default: CM-01)")
     parser.add_argument("--gateway-id", default=os.getenv("ZONE_A_COLLECTOR_ID", "GW-CM01-PATAN"), help="Collector Gateway ID")
     parser.add_argument("--ingest-url", default=os.getenv("ZONE_A_INGEST_URL", "http://127.0.0.1:8787/api/v1/ingest/telemetry"), help="Zone B Ingestion API Endpoint")
-    parser.add_argument("--token", default=os.getenv("GATEWAY_INGEST_KEY", os.getenv("ADMIN_API_KEY", "")), help="Gateway Ingestion Secret Token")
+    parser.add_argument("--token", default=None, help="Gateway Ingestion Secret Token (reads GATEWAY_TOKEN_<GW_ID> from env if omitted)")
     parser.add_argument("--interval", type=int, default=int(os.getenv("ZONE_A_POLL_INTERVAL", "5")), help="Collection interval in seconds")
     parser.add_argument("--once", action="store_true", help="Transmit a single reading and exit")
     parser.add_argument("--fault", choices=["pressure-low", "turbidity-high", "tank-low", "sensor-bad"], help="Inject simulated anomaly for testing")
-    parser.add_argument("--buffer-db", default="data/simulated_collector.db", help="Path to local SQLite buffer database")
+    parser.add_argument("--buffer-db", default=os.getenv("ZONE_A_BUFFER_DB", "data/simulated_collector.db"), help="Path to local SQLite buffer database")
     parser.add_argument("--classification", default=os.getenv("DATA_CLASSIFICATION", "SIMULATED_LAB"), help="Telemetry classification (default: SIMULATED_LAB)")
     return parser.parse_args()
 
@@ -49,6 +49,20 @@ def parse_args():
 def main():
     args = parse_args()
     logger.info("Initializing Zone A Simulated Collector for Station: %s (Gateway: %s)", args.station, args.gateway_id)
+
+    # Resolve token strictly per Gateway ID (Zero legacy fallbacks)
+    gw_id = args.gateway_id
+    token_env = f"GATEWAY_TOKEN_{gw_id.replace('-', '_')}"
+    token = (args.token or os.getenv(token_env) or "").strip()
+
+    if not token or len(token) < 24:
+        logger.critical(
+            "AUTHENTICATION ERROR: No dedicated gateway credential provided for %s. "
+            "Please set %s in .env or pass --token (minimum 24 characters). "
+            "Legacy key fallbacks are disabled.",
+            gw_id, token_env
+        )
+        sys.exit(1)
 
     adapter = SimulatedFieldAdapter()
     adapter.connect()
@@ -66,10 +80,6 @@ def main():
     elif args.fault == "sensor-bad":
         logger.warning("INJECTING FAULT: Bad Sensor Quality Flag")
         adapter.set_fault("CM01_PT_01", 0.0, quality="BAD")
-
-    gw_id = args.gateway_id
-    token_env = f"GATEWAY_TOKEN_{gw_id.replace('-', '_')}"
-    token = (args.token or os.getenv(token_env) or os.getenv("GATEWAY_TOKEN") or os.getenv("GATEWAY_INGEST_KEY") or "").strip()
 
     agent = EdgeCollectorAgent(
         adapter=adapter,

@@ -324,10 +324,40 @@ function clearLoginRateLimit(ip) {
   loginAttempts.delete(ip);
 }
 
-// Detect if connection is over HTTPS (direct or through reverse proxy like Tailscale Serve)
+// Trusted Proxy Boundary:
+// Only inspect X-Forwarded-For / X-Forwarded-Proto if the direct TCP peer is a verified trusted proxy
+const TRUSTED_PROXIES = new Set(
+  (process.env.TRUSTED_PROXIES || '127.0.0.1,::1,::ffff:127.0.0.1')
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+function isTrustedProxy(socketIp) {
+  if (!socketIp) return false;
+  return TRUSTED_PROXIES.has(socketIp.toLowerCase());
+}
+
+function resolveClientIp(req) {
+  const socketIp = req.socket.remoteAddress || '127.0.0.1';
+  // If the direct connection is NOT from a trusted reverse proxy, IGNORE client-provided X-Forwarded-For completely
+  if (!isTrustedProxy(socketIp)) {
+    return socketIp;
+  }
+  const xff = req.headers['x-forwarded-for'];
+  if (xff && typeof xff === 'string') {
+    const parts = xff.split(',').map(s => s.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[0];
+  }
+  return socketIp;
+}
+
+// Detect if connection is over HTTPS (direct or through verified trusted reverse proxy like Tailscale Serve)
 function isConnectionSecure(req) {
   if (process.env.COOKIE_SECURE === 'true') return true;
   if (req.socket.encrypted) return true;
+  const socketIp = req.socket.remoteAddress || '127.0.0.1';
+  if (!isTrustedProxy(socketIp)) return false;
   const proto = req.headers['x-forwarded-proto'];
   if (proto && proto.toLowerCase() === 'https') return true;
   const ssl = req.headers['x-forwarded-ssl'];
@@ -419,7 +449,7 @@ async function handler(req, res) {
   }
 
   if (req.method === 'POST' && p === '/api/auth/login') {
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || '127.0.0.1';
+    const clientIp = resolveClientIp(req);
     if (!checkLoginRateLimit(clientIp)) {
       return reply(res, 429, { error: 'Too many failed login attempts. Please wait 60 seconds.', retryAfter: 60 });
     }

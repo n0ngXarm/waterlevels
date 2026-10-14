@@ -609,3 +609,78 @@ test('Zone B Ingestion API: Production Mode Gateway Verification', { timeout: 15
   }
 });
 
+test('Zone B Ingestion API: Trusted Proxy Boundary & Spoofed X-Forwarded-For Rejection', { timeout: 15_000 }, async () => {
+  const root = path.resolve(import.meta.dirname, '..');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-proxy-test-'));
+
+  for (const file of ['server.mjs', 'rules.mjs']) {
+    fs.copyFileSync(path.join(root, file), path.join(tmp, file));
+  }
+  fs.cpSync(path.join(root, 'public'), path.join(tmp, 'public'), { recursive: true });
+  fs.mkdirSync(path.join(tmp, 'storage'));
+
+  const serverPort = await openPort();
+  const env = {
+    ...process.env,
+    APP_ENV: 'lab',
+    DEMO_MODE: 'false',
+    HOST: '127.0.0.1',
+    PORT: String(serverPort),
+    STATION_REGISTRY_PATH: path.join(root, '..', 'config', 'station_registry.json'),
+    ADMIN_API_KEY: ADMIN_KEY,
+    VIEWER_API_KEY: VIEWER_KEY,
+    REQUIRE_AUTH_FOR_READ: 'true',
+    // Set trusted proxy to a dummy external IP so that 127.0.0.1 is considered an UNTRUSTED direct client
+    TRUSTED_PROXIES: '198.51.100.99',
+    TELEGRAM_BOT_TOKEN: '',
+    TELEGRAM_CHAT_ID: ''
+  };
+
+  const child = spawn(process.execPath, [path.join(tmp, 'server.mjs')], { cwd: tmp, env, stdio: 'pipe' });
+  const base = `http://127.0.0.1:${serverPort}`;
+
+  try {
+    for (let i = 0; i < 50; i++) {
+      if (child.exitCode !== null) throw Error('Server died unexpectedly');
+      try {
+        const r = await fetch(`${base}/api/health`);
+        if (r.ok) break;
+      } catch {}
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    // Direct untrusted client attempts to bypass rate limiting by spoofing a different X-Forwarded-For each time
+    for (let i = 1; i <= 5; i++) {
+      const spoofRes = await fetch(`${base}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': `203.0.113.${i}` // Attacker rotates spoofed IP
+        },
+        body: JSON.stringify({ key: `wrong-credential-attempt-${i}-padding-extra` })
+      });
+      assert.equal(spoofRes.status, 401, `Attempt ${i} should fail with 401`);
+    }
+
+    // 6th attempt with yet another spoofed IP:
+    // Server must IGNORE X-Forwarded-For, recognize socket peer is the same untrusted IP, and rate limit!
+    const blockedRes = await fetch(`${base}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': '203.0.113.99'
+      },
+      body: JSON.stringify({ key: 'wrong-credential-attempt-6-padding-extra' })
+    });
+    assert.equal(blockedRes.status, 429, 'Spoofed X-Forwarded-For must be ignored; untrusted socket must be rate-limited (HTTP 429)');
+  } finally {
+    child.kill('SIGTERM');
+    await new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode) resolve();
+      else child.once('exit', resolve);
+    });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+
