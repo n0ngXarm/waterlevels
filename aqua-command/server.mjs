@@ -327,7 +327,7 @@ function clearLoginRateLimit(ip) {
 // Trusted Proxy Boundary:
 // Only inspect X-Forwarded-For / X-Forwarded-Proto if the direct TCP peer is a verified trusted proxy
 const TRUSTED_PROXIES = new Set(
-  (process.env.TRUSTED_PROXIES || '127.0.0.1,::1,::ffff:127.0.0.1')
+  (process.env.TRUSTED_PROXIES || '127.0.0.1,::1,::ffff:127.0.0.1,private,docker')
     .split(',')
     .map(s => s.trim().toLowerCase())
     .filter(Boolean)
@@ -335,7 +335,21 @@ const TRUSTED_PROXIES = new Set(
 
 function isTrustedProxy(socketIp) {
   if (!socketIp) return false;
-  return TRUSTED_PROXIES.has(socketIp.toLowerCase());
+  const raw = socketIp.trim().toLowerCase();
+  const clean = raw.replace(/^::ffff:/, '');
+  if (TRUSTED_PROXIES.has(raw) || TRUSTED_PROXIES.has(clean)) return true;
+  for (const entry of TRUSTED_PROXIES) {
+    if (entry === 'private' || entry === 'docker') {
+      // RFC 1918 private / Docker bridge ranges & loopbacks
+      if (clean === '127.0.0.1' || clean === '::1' || clean === 'localhost') return true;
+      if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(clean)) return true; // Docker bridge 172.16.0.0/12
+      if (/^10\./.test(clean)) return true; // Docker bridge / internal 10.0.0.0/8
+      if (/^192\.168\./.test(clean)) return true; // Private LAN 192.168.0.0/16
+    } else if (entry.includes('*') && clean.startsWith(entry.replace(/\*$/, ''))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function resolveClientIp(req) {

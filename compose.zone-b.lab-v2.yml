@@ -1,0 +1,52 @@
+# ==============================================================================
+# AQUA COMMAND — Zone B Distributed Lab v2 (compose.zone-b.lab-v2.yml)
+#
+# Parallel Blue-Green Lab Deployment:
+# - Runs concurrently with legacy containers without any port, storage or name collisions.
+# - Container: aqua_command_zone_b_lab_v2
+# - Host port: 127.0.0.1:8788 -> Container 8787
+# - Storage: ./aqua-command/storage-v2
+# ==============================================================================
+
+name: aqua-zone-b-lab-v2
+
+services:
+  aqua-command:
+    build:
+      context: ./aqua-command
+      dockerfile: Dockerfile
+    image: pwa-aqua-command:lab-v2
+    container_name: aqua_command_zone_b_lab_v2
+    restart: unless-stopped
+    env_file:
+      - path: .env.lab
+        required: true
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8787"
+      TZ: Asia/Bangkok
+      APP_ENV: "lab"
+      DEMO_MODE: "false"
+      SEND_DEMO_ALERTS: "false"
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
+      REQUIRE_AUTH_FOR_READ: "true"
+      STATION_REGISTRY_PATH: /app/config/station_registry.json
+      TRUSTED_PROXIES: "127.0.0.1,::1,::ffff:127.0.0.1,private,docker,172.16.0.0/12"
+    ports:
+      - "${AQUA_BIND_IP:-127.0.0.1}:8788:8787"
+    volumes:
+      - ./aqua-command/storage-v2:/app/storage:z
+      - ./config:/app/config:ro,z
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    networks:
+      - aqua-lab-net-v2
+
+networks:
+  aqua-lab-net-v2:
+    driver: bridge

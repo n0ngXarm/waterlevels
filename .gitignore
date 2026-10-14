@@ -19,7 +19,7 @@ aqua-command/.env
 *.db
 *.sqlite3
 data/*.db
-aqua-command/storage/
+aqua-command/storage*/
 storage/state.json*
 
 # Logs & temp files
