@@ -20,6 +20,7 @@ const TELEGRAM_BASE = (process.env.TELEGRAM_API_BASE || 'https://api.telegram.or
 const SECRET = process.env.ADMIN_API_KEY || '';
 const VIEWER_KEY = process.env.VIEWER_API_KEY || '';
 const GATEWAY_KEY = process.env.GATEWAY_INGEST_KEY || '';
+const APP_ENV = (process.env.APP_ENV || (DEMO ? 'demo' : 'lab')).toLowerCase();
 const REQUIRE_AUTH_FOR_READ = process.env.REQUIRE_AUTH_FOR_READ === 'true';
 const REMINDER_MS = Math.max(5, Number(process.env.REMINDER_MINUTES)||30)*60_000;
 const SEND_GAP = Math.max(1000, Number(process.env.TELEGRAM_MIN_GAP_MS)||1400);
@@ -105,7 +106,12 @@ if (REGISTRY_PATH) {
       }));
     }
     if (Array.isArray(reg.authorized_gateways)) {
-      authorizedGateways = reg.authorized_gateways;
+      if (APP_ENV === 'lab' || APP_ENV === 'demo') {
+        // In Lab/Demo environment, partition off Production gateways completely
+        authorizedGateways = reg.authorized_gateways.filter(g => g.environment === 'LAB');
+      } else {
+        authorizedGateways = reg.authorized_gateways;
+      }
     }
   } catch (err) {
     console.error('Warning: could not parse station_registry.json:', err.message);
@@ -273,14 +279,16 @@ function extractToken(req) {
   }
   return null;
 }
+const SESSION_TTL_MS = Math.max(1, Number(process.env.SESSION_TTL_HOURS) || 12) * 3600_000;
 const activeSessions = new Map();
+
 function cleanExpiredSessions() {
   const nowMs = Date.now();
   for (const [sid, sess] of activeSessions.entries()) {
-    if (nowMs - sess.createdAt > 86400_000) activeSessions.delete(sid);
+    if (nowMs > sess.expiresAt) activeSessions.delete(sid);
   }
 }
-setInterval(cleanExpiredSessions, 600_000).unref();
+setInterval(cleanExpiredSessions, 300_000).unref();
 
 function getSessionFromReq(req) {
   const cookie = req.headers['cookie'];
@@ -290,11 +298,55 @@ function getSessionFromReq(req) {
   const sid = decodeURIComponent(match[1]);
   const sess = activeSessions.get(sid);
   if (!sess) return null;
-  if (Date.now() - sess.createdAt > 86400_000) {
+  if (Date.now() > sess.expiresAt) {
     activeSessions.delete(sid);
     return null;
   }
   return sess;
+}
+
+// In-memory rate limiter for login attempts (max 5 failed attempts per 60 seconds per IP)
+const loginAttempts = new Map();
+function checkLoginRateLimit(ip) {
+  const nowMs = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || nowMs > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: nowMs + 60_000 });
+    return true;
+  }
+  if (entry.count >= 5) {
+    return false;
+  }
+  entry.count++;
+  return true;
+}
+function clearLoginRateLimit(ip) {
+  loginAttempts.delete(ip);
+}
+
+// Detect if connection is over HTTPS (direct or through reverse proxy like Tailscale Serve)
+function isConnectionSecure(req) {
+  if (process.env.COOKIE_SECURE === 'true') return true;
+  if (req.socket.encrypted) return true;
+  const proto = req.headers['x-forwarded-proto'];
+  if (proto && proto.toLowerCase() === 'https') return true;
+  const ssl = req.headers['x-forwarded-ssl'];
+  if (ssl && ssl.toLowerCase() === 'on') return true;
+  return false;
+}
+
+// CSRF / Origin verification for state-changing endpoints
+function verifyOrigin(req) {
+  const origin = req.headers['origin'];
+  if (!origin) return true; // Non-browser clients (collector, curl, testing tools)
+  const host = req.headers['host'];
+  if (!host) return false;
+  try {
+    const originUrl = new URL(origin);
+    return originUrl.host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
 }
 
 function checkKey(req) {
@@ -315,13 +367,7 @@ function checkGatewayKey(req) {
   if (VIEWER_KEY && token.length === VIEWER_KEY.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(VIEWER_KEY))) {
     return false;
   }
-  const validKeys = [GATEWAY_KEY].filter(k => k && k.length >= 24);
-  for (const k of validKeys) {
-    if (token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k))) {
-      return true;
-    }
-  }
-  return false;
+  return true;
 }
 
 function checkReadKey(req) {
@@ -365,7 +411,19 @@ async function handler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const p = url.pathname;
 
+  // CSRF / Origin protection for state-changing requests
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+    if (!verifyOrigin(req)) {
+      return reply(res, 403, { error: 'Cross-origin request rejected (CSRF protection)' });
+    }
+  }
+
   if (req.method === 'POST' && p === '/api/auth/login') {
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || '127.0.0.1';
+    if (!checkLoginRateLimit(clientIp)) {
+      return reply(res, 429, { error: 'Too many failed login attempts. Please wait 60 seconds.', retryAfter: 60 });
+    }
+
     let b = await body(req);
     const cred = String(b.token || b.key || b.password || '').trim();
     if (!cred || cred.length < 24) {
@@ -379,15 +437,23 @@ async function handler(req, res) {
     } else {
       return reply(res, 401, { error: 'Invalid viewer or admin credential' });
     }
+
+    clearLoginRateLimit(clientIp);
     const sessionId = crypto.randomBytes(32).toString('hex');
-    activeSessions.set(sessionId, { role, createdAt: Date.now() });
+    activeSessions.set(sessionId, {
+      role,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + SESSION_TTL_MS
+    });
+
+    const secureAttr = isConnectionSecure(req) ? '; Secure' : '';
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
-      'Set-Cookie': `aqua_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`
+      'Set-Cookie': `aqua_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax${secureAttr}; Max-Age=${Math.round(SESSION_TTL_MS / 1000)}`
     });
-    return res.end(JSON.stringify({ ok: true, authenticated: true, role }));
+    return res.end(JSON.stringify({ ok: true, authenticated: true, role, expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString() }));
   }
 
   if (req.method === 'GET' && p === '/api/auth/status') {
@@ -410,11 +476,12 @@ async function handler(req, res) {
       const match = cookie.match(/(?:^|;\s*)aqua_session=([^;]+)/);
       if (match) activeSessions.delete(decodeURIComponent(match[1]));
     }
+    const secureAttr = isConnectionSecure(req) ? '; Secure' : '';
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
-      'Set-Cookie': `aqua_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+      'Set-Cookie': `aqua_session=; Path=/; HttpOnly; SameSite=Lax${secureAttr}; Max-Age=0`
     });
     return res.end(JSON.stringify({ ok: true, authenticated: false }));
   }
@@ -459,15 +526,20 @@ async function handler(req, res) {
     // Gateway Registry Binding & Cross-Station Injection Prevention
     const gwReg = authorizedGateways.find(g => g.gateway_id === b.collectorId);
     if (!gwReg) {
-      return reply(res, 403, { error: `Unregistered or unauthorized gateway ID: ${b.collectorId}` });
+      return reply(res, 403, { error: `Unregistered or unauthorized gateway ID: ${b.collectorId}${APP_ENV === 'lab' ? ' in LAB environment' : ''}` });
     }
     if (gwReg.station_id !== b.stationId) {
       return reply(res, 403, { error: `Gateway ${b.collectorId} is bound to station ${gwReg.station_id}, cross-station injection for ${b.stationId} rejected` });
     }
 
-    const expectedToken = (gwReg.token_env && process.env[gwReg.token_env]) || gwReg.token || GATEWAY_KEY;
-    if (!expectedToken || expectedToken.length < 24 || token.length !== expectedToken.length || !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) {
-      return reply(res, 401, { error: 'Invalid gateway token' });
+    // Per-Gateway Dedicated Credential Resolution (ZERO fallback to GATEWAY_INGEST_KEY)
+    const envVarName = gwReg.token_env || `GATEWAY_TOKEN_${gwReg.gateway_id.replace(/[^A-Za-z0-9]/g, '_')}`;
+    const expectedToken = (process.env[envVarName] || gwReg.token || '').trim();
+    if (!expectedToken || expectedToken.length < 24) {
+      return reply(res, 500, { error: `Gateway credential (${envVarName}) is not configured on server` });
+    }
+    if (token.length !== expectedToken.length || !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) {
+      return reply(res, 401, { error: `Invalid gateway token for ${gwReg.gateway_id}` });
     }
 
     // 1. Server-enforced Source Classification (Strictly from authorized_gateways registry, NO substring matching)

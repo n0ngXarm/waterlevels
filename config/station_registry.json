@@ -340,7 +340,7 @@
       "station_id": "CM-01",
       "environment": "LAB",
       "enforced_classification": "SIMULATED_LAB",
-      "token_env": "GATEWAY_INGEST_KEY",
+      "token_env": "GATEWAY_TOKEN_GW_CM01_PATAN",
       "description": "Lab Simulator Gateway (Fedora Dev)"
     },
     {
@@ -348,7 +348,7 @@
       "station_id": "CM-01",
       "environment": "LAB",
       "enforced_classification": "SIMULATED_LAB",
-      "token_env": "GATEWAY_INGEST_KEY",
+      "token_env": "GATEWAY_TOKEN_GW_CM01_NONGSERVER",
       "description": "Lab Simulator Gateway (nongserver Debian 13)"
     },
     {
@@ -356,7 +356,7 @@
       "station_id": "CM-01",
       "environment": "PROD",
       "enforced_classification": "AUTHORIZED_FIELD_TELEMETRY",
-      "token_env": "GATEWAY_INGEST_KEY",
+      "token_env": "GATEWAY_TOKEN_GW_CM01_FIELD_PROD",
       "description": "Physical Edge Collector at Pa Tan Plant (Requires PWA formal approval)"
     }
   ]

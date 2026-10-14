@@ -22,6 +22,11 @@ import uuid
 logger = logging.getLogger(__name__)
 
 
+class BufferDiskPressureError(RuntimeError):
+    """Raised when local SQLite buffer cannot accept writes due to strict disk budget."""
+    pass
+
+
 class CollectorBuffer:
     """Persistent bounded FIFO buffer for edge telemetry store-and-forward."""
 
@@ -138,6 +143,17 @@ class CollectorBuffer:
         with self._get_connection() as conn:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
+    def backup_to(self, target_path: str) -> None:
+        """Creates a 100% consistent online snapshot of the database using SQLite Backup API."""
+        target_path_obj = Path(target_path)
+        target_path_obj.parent.mkdir(parents=True, exist_ok=True)
+        with self._get_connection() as src_conn:
+            dest_conn = sqlite3.connect(str(target_path_obj))
+            try:
+                src_conn.backup(dest_conn)
+            finally:
+                dest_conn.close()
+
     def _enforce_limits(self, conn: sqlite3.Connection) -> None:
         """Prunes expired records and enforces max records / max file size constraints."""
         # 1. Prune records older than retention period
@@ -172,7 +188,25 @@ class CollectorBuffer:
             pass
 
     def enqueue(self, packet: dict[str, Any]) -> int:
-        """Stores a telemetry packet into the local buffer with limit enforcements."""
+        """Stores a telemetry packet into the local buffer with limit enforcements.
+        Fails safely if disk budget cannot be honored."""
+        # Fail-safe pre-check: if disk usage exceeds ceiling even before insert, attempt cleanup
+        if self.get_total_disk_bytes() > self.max_bytes:
+            try:
+                self.checkpoint()
+            except Exception:
+                pass
+            if self.get_total_disk_bytes() > self.max_bytes:
+                logger.error(
+                    "DISK_PRESSURE: Local buffer total disk size (%d bytes) exceeds ceiling (%d bytes). "
+                    "Refusing new writes to prevent host disk exhaustion.",
+                    self.get_total_disk_bytes(), self.max_bytes
+                )
+                raise BufferDiskPressureError(
+                    f"Buffer disk budget exceeded ({self.get_total_disk_bytes()} > {self.max_bytes} bytes). "
+                    "Fail-safe protection active."
+                )
+
         packet_json = json.dumps(packet)
         src_ts = packet.get("sourceTimestamp") or packet.get("source_timestamp") or datetime.now(timezone.utc).isoformat()
         seq = packet.get("sequenceNumber") or packet.get("sequence_number") or 0

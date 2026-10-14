@@ -19,8 +19,10 @@ function openPort() {
 }
 
 const ADMIN_KEY = 'test-admin-secret-key-at-least-32-chars';
-const GATEWAY_KEY = 'test-gateway-token-secret-at-least-32-chars';
 const VIEWER_KEY = 'test-viewer-read-key-at-least-32-chars';
+const GW_PATAN_KEY = 'test-gw-patan-secret-at-least-32-chars';
+const GW_NONGSERVER_KEY = 'test-gw-nongserver-secret-at-least-32-chars';
+const GW_PROD_KEY = 'test-gw-prod-secret-at-least-32-chars';
 
 test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { timeout: 30_000 }, async () => {
   const root = path.resolve(import.meta.dirname, '..');
@@ -57,12 +59,15 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
   const serverPort = await openPort();
   const env = {
     ...process.env,
+    APP_ENV: 'lab',
     DEMO_MODE: 'false',
     HOST: '127.0.0.1',
     PORT: String(serverPort),
     STATION_REGISTRY_PATH: path.join(root, '..', 'config', 'station_registry.json'),
     ADMIN_API_KEY: ADMIN_KEY,
-    GATEWAY_INGEST_KEY: GATEWAY_KEY,
+    GATEWAY_TOKEN_GW_CM01_PATAN: GW_PATAN_KEY,
+    GATEWAY_TOKEN_GW_CM01_NONGSERVER: GW_NONGSERVER_KEY,
+    GATEWAY_TOKEN_GW_CM01_FIELD_PROD: GW_PROD_KEY,
     VIEWER_API_KEY: VIEWER_KEY,
     REQUIRE_AUTH_FOR_READ: 'true',
     TELEGRAM_BOT_TOKEN: 'mock_test_bot_token_123',
@@ -75,7 +80,7 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
   let child = spawn(process.execPath, [path.join(tmp, 'server.mjs')], { cwd: tmp, env, stdio: 'pipe' });
   const base = `http://127.0.0.1:${serverPort}`;
 
-  async function postIngest(payload, token = GATEWAY_KEY) {
+  async function postIngest(payload, token = GW_PATAN_KEY) {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['X-Gateway-Token'] = token;
     return fetch(`${base}/api/v1/ingest/telemetry`, {
@@ -113,7 +118,7 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
     assert.equal(authRead.json.mode, 'live-ingest');
 
     // 4.3 GATEWAY_KEY CANNOT access read-only state (Role Separation)
-    const gatewayRead = await getState(GATEWAY_KEY);
+    const gatewayRead = await getState(GW_PATAN_KEY);
     assert.equal(gatewayRead.status, 401, 'Gateway key MUST NOT have Viewer permissions on /api/state');
 
     // 4.4 VIEWER_KEY CANNOT ingest telemetry (Role Separation)
@@ -129,7 +134,7 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
     assert.equal(urlTokenRes.status, 401, 'Credentials sent via URL query parameters must be rejected');
 
     // 4.7 Gateway key CANNOT access Admin export endpoint
-    const gatewayExport = await fetch(`${base}/api/export/alerts`, { headers: { 'X-Gateway-Token': GATEWAY_KEY } });
+    const gatewayExport = await fetch(`${base}/api/export/alerts`, { headers: { 'X-Gateway-Token': GW_PATAN_KEY } });
     assert.equal(gatewayExport.status, 401, 'Gateway key MUST NOT have Admin export permissions');
 
     // 4.8 Viewer key CANNOT access Admin export endpoint
@@ -140,14 +145,14 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
     const adminExport = await fetch(`${base}/api/export/alerts`, { headers: { 'Authorization': `Bearer ${ADMIN_KEY}` } });
     assert.equal(adminExport.status, 200, 'Admin key must access Admin export endpoint');
 
-    // --- Phase 2A Negative Security Tests: Gateway Binding & Spoofing Prevention ---
+    // --- Phase 2A & 2C Negative Security Tests: Gateway Binding, Spoofing & Isolation ---
     // 4.10 Unregistered Gateway ID returns HTTP 403 Forbidden
     const unregGw = await postIngest({
       stationId: 'CM-01',
       collectorId: 'GW-UNREGISTERED-FAKE',
       sourceTimestamp: new Date().toISOString(),
       points: { CM01_PT_01: { value: 2.5, quality: 'GOOD' } }
-    }, GATEWAY_KEY);
+    }, GW_PATAN_KEY);
     assert.equal(unregGw.status, 403, 'Unregistered Gateway ID must return HTTP 403');
 
     // 4.11 Cross-Station Injection: Gateway GW-CM01-PATAN is bound to CM-01; sending for CM-02 returns 403
@@ -156,7 +161,7 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
       collectorId: 'GW-CM01-PATAN',
       sourceTimestamp: new Date().toISOString(),
       points: { CM02_PT_01: { value: 2.5, quality: 'GOOD' } }
-    }, GATEWAY_KEY);
+    }, GW_PATAN_KEY);
     assert.equal(crossStation.status, 403, 'Cross-station injection attempt must return HTTP 403');
 
     // 4.12 Gateway Spoofing: Invalid token for registered gateway returns HTTP 401 Unauthorized
@@ -167,6 +172,70 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
       points: { CM01_PT_01: { value: 2.5, quality: 'GOOD' } }
     }, 'invalid-spoofed-gateway-token-32ch');
     assert.equal(spoofToken.status, 401, 'Invalid token for registered gateway must return HTTP 401');
+
+    // 4.12.1 Cross-Gateway Token Spoofing: GW-CM01-PATAN using GW-CM01-NONGSERVER's token returns HTTP 401
+    const crossGwToken = await postIngest({
+      stationId: 'CM-01',
+      collectorId: 'GW-CM01-PATAN',
+      sourceTimestamp: new Date().toISOString(),
+      points: { CM01_PT_01: { value: 2.5, quality: 'GOOD' } }
+    }, GW_NONGSERVER_KEY);
+    assert.equal(crossGwToken.status, 401, 'Using another gateway token must be rejected with HTTP 401');
+
+    // 4.12.2 Production Gateway Impersonation in Lab: GW-CM01-FIELD-PROD is partitioned off in LAB mode
+    const prodInLab = await postIngest({
+      stationId: 'CM-01',
+      collectorId: 'GW-CM01-FIELD-PROD',
+      sourceTimestamp: new Date().toISOString(),
+      points: { CM01_PT_01: { value: 2.5, quality: 'GOOD' } }
+    }, GW_PROD_KEY);
+    assert.equal(prodInLab.status, 403, 'Production gateway claimed in LAB environment must return HTTP 403');
+
+    // 4.12.3 Origin / CSRF Protection: State-changing requests with external Origin header rejected
+    const csrfBlocked = await fetch(`${base}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': 'http://evil-attacker.website'
+      },
+      body: JSON.stringify({ key: VIEWER_KEY })
+    });
+    assert.equal(csrfBlocked.status, 403, 'Cross-origin state-changing request must return HTTP 403');
+
+    // 4.12.4 Dynamic HTTPS Cookie: Request with X-Forwarded-Proto: https emits Secure cookie
+    const httpsLogin = await fetch(`${base}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-Proto': 'https'
+      },
+      body: JSON.stringify({ key: VIEWER_KEY })
+    });
+    assert.equal(httpsLogin.status, 200);
+    const httpsCookie = httpsLogin.headers.get('set-cookie');
+    assert.match(httpsCookie, /;\s*Secure/i, 'Session cookie must include Secure attribute when proxied via HTTPS');
+
+    // 4.12.5 Brute-Force Rate Limiting: 5 failed attempts per IP allowed, 6th attempt returns HTTP 429
+    for (let i = 0; i < 5; i++) {
+      const badAttempt = await fetch(`${base}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': '198.51.100.42'
+        },
+        body: JSON.stringify({ key: `wrong-credential-attempt-${i}-padding-extra` })
+      });
+      assert.equal(badAttempt.status, 401);
+    }
+    const rateLimited = await fetch(`${base}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': '198.51.100.42'
+      },
+      body: JSON.stringify({ key: 'wrong-credential-rate-limited-attempt-padding' })
+    });
+    assert.equal(rateLimited.status, 429, 'Excessive failed login attempts must return HTTP 429');
 
     // --- Phase 2A Frontend Session Cookie Authentication Architecture ---
     // 4.13 Invalid credentials to /api/auth/login return 401
@@ -192,6 +261,32 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
 
     const sessionMatch = setCookieHeader.match(/aqua_session=([a-f0-9]+)/);
     const sessionCookie = `aqua_session=${sessionMatch[1]}`;
+
+    // 4.14.1 Viewer Session RBAC Negative Checks: Viewer cookie CANNOT ingest or administer
+    const viewerCookieIngest = await fetch(`${base}/api/v1/ingest/telemetry`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': sessionCookie
+      },
+      body: JSON.stringify({ stationId: 'CM-01', collectorId: 'GW-CM01-PATAN' })
+    });
+    assert.equal(viewerCookieIngest.status, 401, 'Viewer session cookie cannot ingest telemetry');
+
+    const viewerCookieIncident = await fetch(`${base}/api/incidents`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': sessionCookie
+      },
+      body: JSON.stringify({ title: 'Unauthorized Incident' })
+    });
+    assert.equal(viewerCookieIncident.status, 401, 'Viewer session cookie cannot create incidents');
+
+    const viewerCookieExport = await fetch(`${base}/api/export/alerts`, {
+      headers: { 'Cookie': sessionCookie }
+    });
+    assert.equal(viewerCookieExport.status, 401, 'Viewer session cookie cannot export alerts');
 
     // 4.15 Session cookie can access /api/auth/status
     const authStatus = await (await fetch(`${base}/api/auth/status`, {
@@ -274,7 +369,7 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
         CM01_AT_02: { value: 0.52, quality: 'GOOD', unit: 'mg/L' }
       }
     };
-    const resLab = await postIngest(labSimulatorPayload);
+    const resLab = await postIngest(labSimulatorPayload, GW_PATAN_KEY);
     assert.equal(resLab.status, 200);
     const labJson = await resLab.json();
     assert.equal(labJson.ok, true);
@@ -286,20 +381,20 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
     assert.equal(st01.pressureBar, 2.80);
     assert.equal(st01.online, true);
 
-    // Production gateway (GW-CM01-FIELD-PROD) is enforced as AUTHORIZED_FIELD_TELEMETRY
-    const prodPayload = {
+    // nongserver lab gateway (GW-CM01-NONGSERVER) is also enforced as SIMULATED_LAB
+    const nongPayload = {
       ...labSimulatorPayload,
-      collectorId: 'GW-CM01-FIELD-PROD',
+      collectorId: 'GW-CM01-NONGSERVER',
       sequenceNumber: 2,
       sourceTimestamp: new Date().toISOString()
     };
-    const resProd = await postIngest(prodPayload);
-    assert.equal(resProd.status, 200);
-    assert.equal((await resProd.json()).dataClassification, 'AUTHORIZED_FIELD_TELEMETRY');
+    const resNong = await postIngest(nongPayload, GW_NONGSERVER_KEY);
+    assert.equal(resNong.status, 200);
+    assert.equal((await resNong.json()).dataClassification, 'SIMULATED_LAB');
 
     // --- Test Requirement 3: Idempotency & Deduplication Check ---
     // Sending the exact same packet again returns duplicate=true without re-evaluating rules
-    const resDup = await postIngest(prodPayload);
+    const resDup = await postIngest(nongPayload, GW_NONGSERVER_KEY);
     assert.equal(resDup.status, 200);
     const dupJson = await resDup.json();
     assert.equal(dupJson.duplicate, true, 'Identical packet signature must be recognized as duplicate');
@@ -440,3 +535,77 @@ test('Zone B Ingestion API: Phase 1 Remediation & End-to-End Verification', { ti
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('Zone B Ingestion API: Production Mode Gateway Verification', { timeout: 15_000 }, async () => {
+  const root = path.resolve(import.meta.dirname, '..');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-prod-e2e-'));
+
+  for (const file of ['server.mjs', 'rules.mjs']) {
+    fs.copyFileSync(path.join(root, file), path.join(tmp, file));
+  }
+  fs.cpSync(path.join(root, 'public'), path.join(tmp, 'public'), { recursive: true });
+  fs.mkdirSync(path.join(tmp, 'storage'));
+
+  const serverPort = await openPort();
+  const env = {
+    ...process.env,
+    APP_ENV: 'prod',
+    DEMO_MODE: 'false',
+    HOST: '127.0.0.1',
+    PORT: String(serverPort),
+    STATION_REGISTRY_PATH: path.join(root, '..', 'config', 'station_registry.json'),
+    ADMIN_API_KEY: ADMIN_KEY,
+    GATEWAY_TOKEN_GW_CM01_FIELD_PROD: GW_PROD_KEY,
+    VIEWER_API_KEY: VIEWER_KEY,
+    REQUIRE_AUTH_FOR_READ: 'true',
+    TELEGRAM_BOT_TOKEN: '',
+    TELEGRAM_CHAT_ID: ''
+  };
+
+  const child = spawn(process.execPath, [path.join(tmp, 'server.mjs')], { cwd: tmp, env, stdio: 'pipe' });
+  const base = `http://127.0.0.1:${serverPort}`;
+
+  try {
+    for (let i = 0; i < 50; i++) {
+      if (child.exitCode !== null) throw Error('Server died unexpectedly');
+      try {
+        const r = await fetch(`${base}/api/health`);
+        if (r.ok) break;
+      } catch {}
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    const prodPayload = {
+      stationId: 'CM-01',
+      collectorId: 'GW-CM01-FIELD-PROD',
+      epoch: 'EP-PROD01',
+      sequenceNumber: 1,
+      sourceTimestamp: new Date().toISOString(),
+      points: {
+        CM01_PT_01: { value: 2.82, quality: 'GOOD', unit: 'bar' }
+      }
+    };
+
+    const res = await fetch(`${base}/api/v1/ingest/telemetry`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Gateway-Token': GW_PROD_KEY
+      },
+      body: JSON.stringify(prodPayload)
+    });
+
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    assert.equal(json.ok, true);
+    assert.equal(json.dataClassification, 'AUTHORIZED_FIELD_TELEMETRY', 'PROD gateway in prod environment must receive AUTHORIZED_FIELD_TELEMETRY');
+  } finally {
+    child.kill('SIGTERM');
+    await new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode) resolve();
+      else child.once('exit', resolve);
+    });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+

@@ -19,14 +19,16 @@ services:
     restart: unless-stopped
     env_file:
       - path: .env.lab
-        required: false
-      - path: .env
-        required: false
+        required: true
     environment:
       HOST: "0.0.0.0"
       PORT: "8787"
       TZ: Asia/Bangkok
+      APP_ENV: "lab"
       DEMO_MODE: "false"
+      SEND_DEMO_ALERTS: "false"
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
       REQUIRE_AUTH_FOR_READ: "true"
       STATION_REGISTRY_PATH: /app/config/station_registry.json
     ports:

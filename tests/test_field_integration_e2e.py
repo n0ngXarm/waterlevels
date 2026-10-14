@@ -213,6 +213,33 @@ class TestCollectorBuffer(unittest.TestCase):
         self.buffer.checkpoint()
         self.assertLessEqual(self.buffer.get_total_disk_bytes(), self.buffer.max_bytes)
 
+    def test_buffer_backup_to_consistent_snapshot(self):
+        """Validates that buffer.backup_to creates a clean, usable SQLite snapshot."""
+        for i in range(1, 4):
+            self.buffer.enqueue({"stationId": "CM-01", "sequenceNumber": i, "pressure": 2.5})
+
+        backup_path = Path(self.temp_dir.name) / "snapshot.db"
+        self.buffer.backup_to(str(backup_path))
+
+        self.assertTrue(backup_path.exists())
+        # Open snapshot with a new CollectorBuffer instance and verify data integrity
+        restored_buffer = CollectorBuffer(str(backup_path))
+        self.assertEqual(restored_buffer.pending_count(), 3)
+        batch = restored_buffer.dequeue_batch(limit=10)
+        self.assertEqual(len(batch), 3)
+        self.assertEqual(batch[0]["packet"]["sequenceNumber"], 1)
+
+    def test_buffer_disk_pressure_error_fail_safe(self):
+        """Validates that buffer raises BufferDiskPressureError when disk budget ceiling is reached."""
+        from src.collector.buffer import BufferDiskPressureError
+        small_db = Path(self.temp_dir.name) / "small_buffer.db"
+        tiny_buffer = CollectorBuffer(str(small_db), max_records=1000, max_bytes=4096)
+
+        with self.assertRaises(BufferDiskPressureError):
+            for i in range(1, 50):
+                tiny_buffer.enqueue({"stationId": "CM-01", "sequenceNumber": i, "data": "a" * 1024})
+
+
 
 class TestEdgeCollectorAgentE2E(unittest.TestCase):
     """End-to-End integration tests connecting EdgeCollectorAgent to Ingestion endpoint."""
@@ -322,6 +349,21 @@ class TestEdgeCollectorAgentE2E(unittest.TestCase):
         self.assertEqual(res3["packet"]["sequenceNumber"], 3, "New agent must resume sequence number without resetting to 1")
         self.assertEqual(new_agent.buffer.pending_count(), 0, "Restarted agent successfully flushed prior buffer")
 
+    def test_agent_handles_buffer_disk_pressure(self):
+        """Scenario: Agent handles BufferDiskPressureError gracefully without crashing."""
+        MockZoneBIngestHandler.reject_with_status = 503
+        self.agent.buffer.max_bytes = 4096
+        for i in range(1, 40):
+            try:
+                self.agent.buffer.enqueue({"stationId": "CM-01", "sequenceNumber": i, "data": "z" * 1024})
+            except Exception:
+                break
+
+        res = self.agent.step()
+        self.assertEqual(res["status"], "DISK_PRESSURE_DROPPED")
+        self.assertIn("error", res)
+
 
 if __name__ == "__main__":
     unittest.main()
+

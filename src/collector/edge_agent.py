@@ -134,9 +134,13 @@ class EdgeCollectorAgent:
 
         # Step 4: Fallback to buffer if network is down or server error
         if status in (0, 500, 502, 503, 504):
-            buf_id = self.buffer.enqueue(packet)
-            logger.warning("Zone B unreachable (HTTP %d). Telemetry seq=%d enqueued to buffer (ID=%d)", status, packet["sequenceNumber"], buf_id)
-            return {"status": "BUFFERED", "packet": packet, "buffer_id": buf_id, "http_status": status}
+            try:
+                buf_id = self.buffer.enqueue(packet)
+                logger.warning("Zone B unreachable (HTTP %d). Telemetry seq=%d enqueued to buffer (ID=%d)", status, packet["sequenceNumber"], buf_id)
+                return {"status": "BUFFERED", "packet": packet, "buffer_id": buf_id, "http_status": status}
+            except Exception as e:
+                logger.critical("Zone B unreachable and local buffer in DISK_PRESSURE state: %s. Dropping packet seq=%d to protect host disk.", str(e), packet["sequenceNumber"])
+                return {"status": "DISK_PRESSURE_DROPPED", "packet": packet, "http_status": status, "error": str(e)}
 
         # Unauthorized (401/403) or Unprocessable (422)
         logger.error("Zone B rejected packet with HTTP %d: %s", status, body)

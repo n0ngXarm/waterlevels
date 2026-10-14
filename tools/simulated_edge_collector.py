@@ -67,12 +67,16 @@ def main():
         logger.warning("INJECTING FAULT: Bad Sensor Quality Flag")
         adapter.set_fault("CM01_PT_01", 0.0, quality="BAD")
 
+    gw_id = args.gateway_id
+    token_env = f"GATEWAY_TOKEN_{gw_id.replace('-', '_')}"
+    token = (args.token or os.getenv(token_env) or os.getenv("GATEWAY_TOKEN") or os.getenv("GATEWAY_INGEST_KEY") or "").strip()
+
     agent = EdgeCollectorAgent(
         adapter=adapter,
         ingest_url=args.ingest_url,
         station_id=args.station,
         collector_id=args.gateway_id,
-        gateway_token=args.token,
+        gateway_token=token,
         buffer_db_path=args.buffer_db,
         data_classification=args.classification
     )
