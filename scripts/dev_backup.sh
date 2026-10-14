@@ -7,7 +7,11 @@
 set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKUP_DIR="${BASE_DIR}/backups"
+BACKUP_DIR="${AQUA_BACKUP_DIR:-${BASE_DIR}/backups}"
+DATA_DIR="${AQUA_DATA_DIR:-${BASE_DIR}/data}"
+STORAGE_DIR="${AQUA_STORAGE_DIR:-${BASE_DIR}/aqua-command/storage}"
+CONFIG_DIR="${AQUA_CONFIG_DIR:-${BASE_DIR}/config}"
+
 TIMESTAMP="$(date +'%Y%m%d_%H%M%S')"
 BACKUP_FILE="${BACKUP_DIR}/aqua_backup_${TIMESTAMP}.tar.gz"
 
@@ -16,7 +20,7 @@ mkdir -p "${BACKUP_DIR}"
 echo "==> [AQUA COMMAND] Initiating system state backup at ${TIMESTAMP}..."
 
 # Ensure target directories exist
-mkdir -p "${BASE_DIR}/data" "${BASE_DIR}/aqua-command/storage" "${BASE_DIR}/config"
+mkdir -p "${DATA_DIR}" "${STORAGE_DIR}" "${CONFIG_DIR}"
 
 # Staging directory for consistent snapshots
 STAGE_DIR="$(mktemp -d)"
@@ -25,24 +29,30 @@ trap 'rm -rf "${STAGE_DIR}"' EXIT
 mkdir -p "${STAGE_DIR}/data" "${STAGE_DIR}/aqua-command/storage" "${STAGE_DIR}/config"
 
 # Copy config directory
-cp -a "${BASE_DIR}/config"/* "${STAGE_DIR}/config/" 2>/dev/null || true
+if [ -d "${CONFIG_DIR}" ]; then
+    cp -a "${CONFIG_DIR}"/* "${STAGE_DIR}/config/" 2>/dev/null || true
+fi
 
 # Copy JSON state files safely
-if [ -f "${BASE_DIR}/aqua-command/storage/state.json" ]; then
-    cp -a "${BASE_DIR}/aqua-command/storage/state.json" "${STAGE_DIR}/aqua-command/storage/"
+if [ -f "${STORAGE_DIR}/state.json" ]; then
+    cp -a "${STORAGE_DIR}/state.json" "${STAGE_DIR}/aqua-command/storage/"
 fi
 
 # Use SQLite Online Backup API for all active/dormant SQLite databases
 shopt -s nullglob
-db_files=("${BASE_DIR}"/data/*.db "${BASE_DIR}"/aqua-command/storage/*.db)
+db_files=("${DATA_DIR}"/*.db "${STORAGE_DIR}"/*.db)
 shopt -u nullglob
 
 for db in "${db_files[@]}"; do
     if [ -f "$db" ]; then
-        rel_path="${db#"${BASE_DIR}/"}"
-        dest_db="${STAGE_DIR}/${rel_path}"
+        db_basename="$(basename "$db")"
+        if [[ "$db" == "${DATA_DIR}"/* ]]; then
+            dest_db="${STAGE_DIR}/data/${db_basename}"
+        else
+            dest_db="${STAGE_DIR}/aqua-command/storage/${db_basename}"
+        fi
         mkdir -p "$(dirname "${dest_db}")"
-        echo "==> [SQLITE BACKUP] Creating online consistent backup: ${rel_path} -> ${dest_db}..."
+        echo "==> [SQLITE BACKUP] Creating online consistent backup: ${db_basename} -> ${dest_db}..."
         python3 -c "
 import sqlite3, sys
 src_path, dest_path = sys.argv[1], sys.argv[2]

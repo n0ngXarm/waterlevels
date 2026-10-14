@@ -43,6 +43,7 @@ def parse_args():
     parser.add_argument("--fault", choices=["pressure-low", "turbidity-high", "tank-low", "sensor-bad"], help="Inject simulated anomaly for testing")
     parser.add_argument("--buffer-db", default=os.getenv("ZONE_A_BUFFER_DB", "data/simulated_collector.db"), help="Path to local SQLite buffer database")
     parser.add_argument("--classification", default=os.getenv("DATA_CLASSIFICATION", "SIMULATED_LAB"), help="Telemetry classification (default: SIMULATED_LAB)")
+    parser.add_argument("--ca-cert", default=os.getenv("ZONE_A_CA_CERT", None), help="Path to custom CA certificate for TLS verification")
     return parser.parse_args()
 
 
@@ -88,7 +89,8 @@ def main():
         collector_id=args.gateway_id,
         gateway_token=token,
         buffer_db_path=args.buffer_db,
-        data_classification=args.classification
+        data_classification=args.classification,
+        ca_cert_path=args.ca_cert
     )
 
     if args.once:

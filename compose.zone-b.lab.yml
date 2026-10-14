@@ -9,6 +9,8 @@
 # - Zero simulator or edge collector containers run on Zone B in this topology.
 # ==============================================================================
 
+name: aqua-zone-b-lab
+
 services:
   aqua-command:
     build:

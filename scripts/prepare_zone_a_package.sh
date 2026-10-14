@@ -31,7 +31,7 @@ cat << 'EOF' > "${STAGE_DIR}/.env.example"
 # ==============================================================================
 ZONE_A_STATION_ID=CM-01
 ZONE_A_COLLECTOR_ID=GW-CM01-NONGSERVER
-ZONE_A_INGEST_URL=http://100.103.145.101:8787/api/v1/ingest/telemetry
+ZONE_A_INGEST_URL=https://fedora.taild7ee11.ts.net/api/v1/ingest/telemetry
 GATEWAY_TOKEN_GW_CM01_NONGSERVER=YOUR_GATEWAY_TOKEN_GW_CM01_NONGSERVER_HERE
 ZONE_A_POLL_INTERVAL=5
 ZONE_A_BUFFER_DB=data/zone_a_buffer.db

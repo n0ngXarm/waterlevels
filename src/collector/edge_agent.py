@@ -28,7 +28,8 @@ class EdgeCollectorAgent:
         collector_id: str = "GW-CM01-PATAN",
         gateway_token: str = "",
         buffer_db_path: str = "data/collector_buffer.db",
-        data_classification: str = "SIMULATED_LAB"
+        data_classification: str = "SIMULATED_LAB",
+        ca_cert_path: Optional[str] = None
     ):
         self.adapter = adapter
         self.ingest_url = ingest_url.rstrip("/")
@@ -36,6 +37,7 @@ class EdgeCollectorAgent:
         self.collector_id = collector_id
         self.gateway_token = gateway_token
         self.data_classification = data_classification
+        self.ca_cert_path = ca_cert_path
         self.buffer = CollectorBuffer(buffer_db_path)
         self._epoch = self.buffer.get_epoch()
         self._last_send_success = False
@@ -77,8 +79,16 @@ class EdgeCollectorAgent:
         data = json.dumps(packet).encode("utf-8")
         req = urllib.request.Request(self.ingest_url, data=data, headers=headers, method="POST")
 
+        ssl_ctx = None
+        if self.ingest_url.startswith("https://"):
+            import ssl
+            if self.ca_cert_path:
+                ssl_ctx = ssl.create_default_context(cafile=self.ca_cert_path)
+            else:
+                ssl_ctx = ssl.create_default_context()
+
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
                 status = resp.status
                 body = resp.read().decode("utf-8")
                 return (status in (200, 201, 202), status, body)
