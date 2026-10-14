@@ -1,0 +1,89 @@
+{
+  "description": "Stable mapping between external PWA data source codes/names and Aqua Command station IDs",
+  "mappings": [
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100401",
+      "plant_name": "สถานีผลิตน้ำป่าตัน",
+      "branch_code": "1004",
+      "target_station_id": "CM-01"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100402",
+      "plant_name": "สถานีผลิตน้ำอุโมงค์",
+      "branch_code": "1004",
+      "target_station_id": "CM-02"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100403",
+      "plant_name": "สถานีผลิตน้ำแม่กวง",
+      "branch_code": "1004",
+      "target_station_id": "CM-03"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100404",
+      "plant_name": "สถานีผลิตน้ำแม่แฝก",
+      "branch_code": "1004",
+      "target_station_id": "CM-04"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100501",
+      "plant_name": "สถานีจ่ายน้ำแม่ริม",
+      "branch_code": "1005",
+      "target_station_id": "CM-05"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100601",
+      "plant_name": "สถานีผลิตน้ำสันกำแพง",
+      "branch_code": "1006",
+      "target_station_id": "CM-06"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100405",
+      "plant_name": "สถานีจ่ายน้ำหางดง",
+      "branch_code": "1004",
+      "target_station_id": "CM-07"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100406",
+      "plant_name": "สถานีจ่ายน้ำสารภี",
+      "branch_code": "1004",
+      "target_station_id": "CM-08"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100701",
+      "plant_name": "สถานีผลิตน้ำแม่แตง",
+      "branch_code": "1007",
+      "target_station_id": "CM-09"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100801",
+      "plant_name": "สถานีผลิตน้ำจอมทอง",
+      "branch_code": "1008",
+      "target_station_id": "CM-10"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "100901",
+      "plant_name": "สถานีผลิตน้ำฝาง",
+      "branch_code": "1009",
+      "target_station_id": "CM-11"
+    },
+    {
+      "source_authority": "PWA_RTU_MAP",
+      "pwa_plant_code": "103001",
+      "plant_name": "สถานีผลิตน้ำฮอด",
+      "branch_code": "1030",
+      "target_station_id": "CM-12"
+    }
+  ]
+}

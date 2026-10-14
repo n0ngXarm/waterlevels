@@ -16,7 +16,11 @@ const DEMO = process.env.DEMO_MODE !== 'false';
 const SEND_DEMO = process.env.SEND_DEMO_ALERTS === 'true';
 const BOT = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT = process.env.TELEGRAM_CHAT_ID || '';
+const TELEGRAM_BASE = (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, '');
 const SECRET = process.env.ADMIN_API_KEY || '';
+const VIEWER_KEY = process.env.VIEWER_API_KEY || '';
+const GATEWAY_KEY = process.env.GATEWAY_INGEST_KEY || '';
+const REQUIRE_AUTH_FOR_READ = process.env.REQUIRE_AUTH_FOR_READ === 'true';
 const REMINDER_MS = Math.max(5, Number(process.env.REMINDER_MINUTES)||30)*60_000;
 const SEND_GAP = Math.max(1000, Number(process.env.TELEGRAM_MIN_GAP_MS)||1400);
 const STALE_AFTER_MS = Math.max(30,Number(process.env.STALE_AFTER_SECONDS)||120)*1000;
@@ -26,25 +30,59 @@ fs.mkdirSync(path.dirname(DATA_PATH), {recursive:true});
 const now = () => new Date().toISOString();
 const num = (n,d=1) => Math.round(n*10**d)/10**d;
 const safeId = v => typeof v === 'string' && /^[\w-]{2,64}$/.test(v);
-const stations = [
-  {id:'CM-01',name:'สถานีผลิตน้ำป่าตัน',district:'เมืองเชียงใหม่',region:'อำเภอเมืองเชียงใหม่',zone:'โซนเมือง',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.824,lon:98.995,px:371.0,py:248.8,x:60.5,y:45.7,pressureBar:2.84,tankLevelPct:78,flowM3h:2860,turbidityNtu:0.48,chlorineMgL:0.54,online:true},
-  {id:'CM-02',name:'สถานีผลิตน้ำอุโมงค์',district:'เมืองเชียงใหม่',region:'อำเภอเมืองเชียงใหม่',zone:'โซนเมือง',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.790,lon:98.955,px:355.6,py:254.7,x:57.9,y:46.9,pressureBar:2.65,tankLevelPct:82,flowM3h:1950,turbidityNtu:0.38,chlorineMgL:0.51,online:true},
-  {id:'CM-03',name:'สถานีผลิตน้ำแม่กวง',district:'สันทราย',region:'อำเภอสันทราย',zone:'โซนตะวันออก',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.855,lon:99.045,px:390.2,py:243.5,x:63.8,y:44.7,pressureBar:2.72,tankLevelPct:74,flowM3h:1820,turbidityNtu:0.42,chlorineMgL:0.48,online:true},
-  {id:'CM-04',name:'สถานีผลิตน้ำแม่แฝก',district:'สันทราย',region:'อำเภอสันทราย',zone:'โซนเหนือ',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:19.005,lon:99.020,px:380.6,py:217.7,x:62.2,y:39.5,pressureBar:2.45,tankLevelPct:69,flowM3h:940,turbidityNtu:0.35,chlorineMgL:0.49,online:true},
-  {id:'CM-05',name:'สถานีจ่ายน้ำแม่ริม',district:'แม่ริม',region:'อำเภอแม่ริม',zone:'โซนเหนือ',pwaBranch:'กปภ.สาขาแม่ริม',lat:18.915,lon:98.945,px:351.8,py:233.2,x:57.2,y:42.6,pressureBar:2.58,tankLevelPct:71,flowM3h:1420,turbidityNtu:0.44,chlorineMgL:0.46,online:true},
-  {id:'CM-06',name:'สถานีผลิตน้ำสันกำแพง',district:'สันกำแพง',region:'อำเภอสันกำแพง',zone:'โซนตะวันออก',pwaBranch:'กปภ.สาขาสันกำแพง',lat:18.745,lon:99.120,px:419.1,py:262.4,x:68.8,y:48.5,pressureBar:2.35,tankLevelPct:65,flowM3h:1150,turbidityNtu:0.51,chlorineMgL:0.44,online:true},
-  {id:'CM-07',name:'สถานีจ่ายน้ำหางดง',district:'หางดง',region:'อำเภอหางดง',zone:'โซนใต้',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.685,lon:98.915,px:340.2,py:272.8,x:55.2,y:50.5,pressureBar:2.48,tankLevelPct:68,flowM3h:1280,turbidityNtu:0.39,chlorineMgL:0.52,online:true},
-  {id:'CM-08',name:'สถานีจ่ายน้ำสารภี',district:'สารภี',region:'อำเภอสารภี',zone:'โซนใต้',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.710,lon:99.035,px:386.4,py:268.5,x:63.2,y:49.7,pressureBar:2.61,tankLevelPct:77,flowM3h:1360,turbidityNtu:0.41,chlorineMgL:0.50,online:true},
-  {id:'CM-09',name:'สถานีผลิตน้ำแม่แตง',district:'แม่แตง',region:'อำเภอแม่แตง',zone:'โซนเหนือ',pwaBranch:'กปภ.สาขาแม่แตง',lat:19.125,lon:98.940,px:349.8,py:197.0,x:56.9,y:35.4,pressureBar:2.38,tankLevelPct:64,flowM3h:880,turbidityNtu:0.45,chlorineMgL:0.47,online:true},
-  {id:'CM-10',name:'สถานีผลิตน้ำจอมทอง',district:'จอมทอง',region:'อำเภอจอมทอง',zone:'โซนใต้',pwaBranch:'กปภ.สาขาจอมทอง',lat:18.420,lon:98.680,px:249.8,py:318.4,x:39.6,y:59.7,pressureBar:2.52,tankLevelPct:73,flowM3h:1020,turbidityNtu:0.40,chlorineMgL:0.45,online:true},
-  {id:'CM-11',name:'สถานีผลิตน้ำฝาง',district:'ฝาง',region:'อำเภอฝาง',zone:'โซนเหนือสุด',pwaBranch:'กปภ.สาขาฝาง',lat:19.915,lon:99.210,px:453.7,py:61.0,x:74.8,y:8.2,pressureBar:2.42,tankLevelPct:66,flowM3h:950,turbidityNtu:0.43,chlorineMgL:0.43,online:true},
-  {id:'CM-12',name:'สถานีผลิตน้ำฮอด',district:'ฮอด',region:'อำเภอฮอด',zone:'โซนใต้สุด',pwaBranch:'กปภ.สาขาฮอด',lat:18.190,lon:98.610,px:222.8,py:358.0,x:35.0,y:67.6,pressureBar:2.30,tankLevelPct:61,flowM3h:760,turbidityNtu:0.46,chlorineMgL:0.42,online:true}
+
+let stations = [
+  {id:'CM-01',name:'สถานีผลิตน้ำป่าตัน',district:'เมืองเชียงใหม่',region:'อำเภอเมืองเชียงใหม่',zone:'โซนเมือง',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',pwaBranchCode:'1004',scopeStatus:'AUTHORIZED_PILOT',lat:18.824,lon:98.995,px:371.0,py:248.8,x:60.5,y:45.7,pressureBar:2.84,tankLevelPct:78,flowM3h:2860,turbidityNtu:0.48,chlorineMgL:0.54,online:true},
+  {id:'CM-02',name:'สถานีผลิตน้ำอุโมงค์',district:'เมืองเชียงใหม่',region:'อำเภอเมืองเชียงใหม่',zone:'โซนเมือง',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',pwaBranchCode:'1004',scopeStatus:'AUTHORIZED_PILOT',lat:18.790,lon:98.955,px:355.6,py:254.7,x:57.9,y:46.9,pressureBar:2.65,tankLevelPct:82,flowM3h:1950,turbidityNtu:0.38,chlorineMgL:0.51,online:true},
+  {id:'CM-03',name:'สถานีผลิตน้ำแม่กวง',district:'สันทราย',region:'อำเภอสันทราย',zone:'โซนตะวันออก',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',pwaBranchCode:'1004',scopeStatus:'AUTHORIZED_PILOT',lat:18.855,lon:99.045,px:390.2,py:243.5,x:63.8,y:44.7,pressureBar:2.72,tankLevelPct:74,flowM3h:1820,turbidityNtu:0.42,chlorineMgL:0.48,online:true},
+  {id:'CM-04',name:'สถานีผลิตน้ำแม่แฝก',district:'สันทราย',region:'อำเภอสันทราย',zone:'โซนเหนือ',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',pwaBranchCode:'1004',scopeStatus:'AUTHORIZED_PILOT',lat:19.005,lon:99.020,px:380.6,py:217.7,x:62.2,y:39.5,pressureBar:2.45,tankLevelPct:69,flowM3h:940,turbidityNtu:0.35,chlorineMgL:0.49,online:true},
+  {id:'CM-05',name:'สถานีจ่ายน้ำแม่ริม',district:'แม่ริม',region:'อำเภอแม่ริม',zone:'โซนเหนือ',pwaBranch:'กปภ.สาขาแม่ริม',pwaBranchCode:'1005',scopeStatus:'OUT_OF_PILOT_SCOPE',lat:18.915,lon:98.945,px:351.8,py:233.2,x:57.2,y:42.6,pressureBar:2.58,tankLevelPct:71,flowM3h:1420,turbidityNtu:0.44,chlorineMgL:0.46,online:true},
+  {id:'CM-06',name:'สถานีผลิตน้ำสันกำแพง',district:'สันกำแพง',region:'อำเภอสันกำแพง',zone:'โซนตะวันออก',pwaBranch:'กปภ.สาขาสันกำแพง',pwaBranchCode:'1006',scopeStatus:'OUT_OF_PILOT_SCOPE',lat:18.745,lon:99.120,px:419.1,py:262.4,x:68.8,y:48.5,pressureBar:2.35,tankLevelPct:65,flowM3h:1150,turbidityNtu:0.51,chlorineMgL:0.44,online:true},
+  {id:'CM-07',name:'สถานีจ่ายน้ำหางดง',district:'หางดง',region:'อำเภอหางดง',zone:'โซนใต้',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',pwaBranchCode:'1004',scopeStatus:'AUTHORIZED_PILOT',lat:18.685,lon:98.915,px:340.2,py:272.8,x:55.2,y:50.5,pressureBar:2.48,tankLevelPct:68,flowM3h:1280,turbidityNtu:0.39,chlorineMgL:0.52,online:true},
+  {id:'CM-08',name:'สถานีจ่ายน้ำสารภี',district:'สารภี',region:'อำเภอสารภี',zone:'โซนใต้',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',pwaBranchCode:'1004',scopeStatus:'AUTHORIZED_PILOT',lat:18.710,lon:99.035,px:386.4,py:268.5,x:63.2,y:49.7,pressureBar:2.61,tankLevelPct:77,flowM3h:1360,turbidityNtu:0.41,chlorineMgL:0.50,online:true},
+  {id:'CM-09',name:'สถานีผลิตน้ำแม่แตง',district:'แม่แตง',region:'อำเภอแม่แตง',zone:'โซนเหนือ',pwaBranch:'กปภ.สาขาแม่แตง',pwaBranchCode:'1007',scopeStatus:'OUT_OF_PILOT_SCOPE',lat:19.125,lon:98.940,px:349.8,py:197.0,x:56.9,y:35.4,pressureBar:2.38,tankLevelPct:64,flowM3h:880,turbidityNtu:0.45,chlorineMgL:0.47,online:true},
+  {id:'CM-10',name:'สถานีผลิตน้ำจอมทอง',district:'จอมทอง',region:'อำเภอจอมทอง',zone:'โซนใต้',pwaBranch:'กปภ.สาขาจอมทอง',pwaBranchCode:'1008',scopeStatus:'OUT_OF_PILOT_SCOPE',lat:18.420,lon:98.680,px:249.8,py:318.4,x:39.6,y:59.7,pressureBar:2.52,tankLevelPct:73,flowM3h:1020,turbidityNtu:0.40,chlorineMgL:0.45,online:true},
+  {id:'CM-11',name:'สถานีผลิตน้ำฝาง',district:'ฝาง',region:'อำเภอฝาง',zone:'โซนเหนือสุด',pwaBranch:'กปภ.สาขาฝาง',pwaBranchCode:'1009',scopeStatus:'OUT_OF_PILOT_SCOPE',lat:19.915,lon:99.210,px:453.7,py:61.0,x:74.8,y:8.2,pressureBar:2.42,tankLevelPct:66,flowM3h:950,turbidityNtu:0.43,chlorineMgL:0.43,online:true},
+  {id:'CM-12',name:'สถานีผลิตน้ำฮอด',district:'ฮอด',region:'อำเภอฮอด',zone:'โซนใต้สุด',pwaBranch:'กปภ.สาขาฮอด',pwaBranchCode:'1030',scopeStatus:'OUT_OF_PILOT_SCOPE',lat:18.190,lon:98.610,px:222.8,py:358.0,x:35.0,y:67.6,pressureBar:2.30,tankLevelPct:61,flowM3h:760,turbidityNtu:0.46,chlorineMgL:0.42,online:true}
 ];
-const reservoirs = [
-  {id:'RES-01',name:'เขื่อนแม่งัดสมบูรณ์ชล',nameEn:'Mae Ngat Somboon Chon Dam',district:'แม่แตง',capacityMcm:265.0,storageMcm:212.5,storagePct:80.2,inflowM3s:14.2,outflowM3s:8.5,status:'normal',statusText:'ปกติ (80.2%)'},
-  {id:'RES-02',name:'เขื่อนแม่กวงอุดมธารา',nameEn:'Mae Kuang Udom Thara Dam',district:'ดอยสะเก็ด',capacityMcm:263.0,storageMcm:189.4,storagePct:72.0,inflowM3s:11.8,outflowM3s:6.2,status:'normal',statusText:'ปกติ (72.0%)'},
-  {id:'RES-03',name:'จุดสูบน้ำดิบแม่น้ำปิง (ป่าตัน)',nameEn:'Ping River Raw Water Intake',district:'เมืองเชียงใหม่',capacityMcm:null,waterLevelM:3.45,thresholdM:3.70,storagePct:93.2,status:'normal',statusText:'ระดับน้ำปกติ (3.45 ม.รทก.)'}
+
+let reservoirs = [
+  {id:'RES-01',name:'เขื่อนแม่งัดสมบูรณ์ชล',nameEn:'Mae Ngat Somboon Chon Dam',district:'แม่แตง',capacityMcm:265.0,storageMcm:212.5,storagePct:80.2,inflowM3s:14.2,outflowM3s:8.5,status:'normal',statusText:'ปกติ (80.2%)',dataClassification:'PUBLIC_EXTERNAL'},
+  {id:'RES-02',name:'เขื่อนแม่กวงอุดมธารา',nameEn:'Mae Kuang Udom Thara Dam',district:'ดอยสะเก็ด',capacityMcm:263.0,storageMcm:189.4,storagePct:72.0,inflowM3s:11.8,outflowM3s:6.2,status:'normal',statusText:'ปกติ (72.0%)',dataClassification:'PUBLIC_EXTERNAL'},
+  {id:'RES-03',name:'จุดสูบน้ำดิบแม่น้ำปิง (ป่าตัน)',nameEn:'Ping River Raw Water Intake',district:'เมืองเชียงใหม่',capacityMcm:null,waterLevelM:3.45,thresholdM:3.70,storagePct:93.2,status:'normal',statusText:'ระดับน้ำปกติ (3.45 ม.รทก.)',dataClassification:'PUBLIC_EXTERNAL'}
 ];
+
+// Load Station Registry from config if available (Priority 1 Data Integrity)
+const REGISTRY_PATH = path.resolve(ROOT, '..', 'config', 'station_registry.json');
+if (fs.existsSync(REGISTRY_PATH)) {
+  try {
+    const reg = JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf8'));
+    if (Array.isArray(reg.stations) && reg.stations.length > 0) {
+      stations = reg.stations.map(st => {
+        const existing = stations.find(x => x.id === st.id) || {};
+        return {
+          ...existing,
+          id: st.id,
+          name: st.name,
+          district: st.district,
+          region: 'อำเภอ' + st.district,
+          pwaBranch: st.pwa_branch_name,
+          pwaBranchCode: st.pwa_branch_code,
+          scopeStatus: st.scope_status,
+          rtuPlantId: st.rtu_plant_id,
+          lat: st.lat,
+          lon: st.lon,
+          px: st.px,
+          py: st.py,
+          x: st.x,
+          y: st.y
+        };
+      });
+    }
+  } catch (err) {
+    console.error('Warning: could not parse station_registry.json:', err.message);
+  }
+}
 for (const s of stations) {
   s.hasTelemetry=DEMO;
   s.lastSeen=DEMO?now():null;
@@ -66,7 +104,12 @@ function saveSoon() {clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,400);
 function saveNow() {try {let temp=DATA_PATH+'.tmp';fs.writeFileSync(temp,JSON.stringify(store));fs.renameSync(temp,DATA_PATH);}catch(e){console.error('State persistence error:',e.message);}}
 function statusOf(s) {if (!s.hasTelemetry) return 'unknown';const a=evaluateTelemetry(s);return a.some(x=>x.severity==='critical')?'critical':a.some(x=>x.severity==='warning')?'warning':'normal';}
 function snapshot() {
-  const details=stations.map(s=>({...s,status:statusOf(s)}));
+  const details=stations.map(s=>({
+    ...s,
+    status:statusOf(s),
+    dataClassification: s.hasTelemetry ? (s.dataClassification || (DEMO ? 'DEMO' : 'AUTHORIZED_FIELD_TELEMETRY')) : (DEMO ? 'DEMO' : 'NO_DATA'),
+    scopeStatus: s.scopeStatus || (s.pwaBranchCode === '1004' ? 'AUTHORIZED_PILOT' : 'OUT_OF_PILOT_SCOPE')
+  }));
   const valid=details.filter(s=>s.hasTelemetry);
   const mean=field=>{const values=valid.map(s=>s[field]).filter(v=>typeof v==='number');return values.length?values.reduce((a,b)=>a+b,0)/values.length:0;};
   const alertCounts={critical:store.alerts.filter(a=>a.severity==='critical'&&!a.resolvedAt&&!a.supersededAt).length,warning:store.alerts.filter(a=>a.severity==='warning'&&!a.resolvedAt&&!a.supersededAt).length};
@@ -154,7 +197,7 @@ async function processQueue() {
   const alert=store.alerts.find(x=>x.id===job.alertId);if(!alert){job.status='failed';job.lastError='Missing alert';saveSoon();return;}
   sending=true;lastTelegramSend=Date.now();job.attempt++;
   try {
-    const response=await fetch(`https://api.telegram.org/bot${BOT}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:CHAT,text:alertMessage(alert),disable_web_page_preview:true}),signal:AbortSignal.timeout(8000)});
+    const response=await fetch(`${TELEGRAM_BASE}/bot${BOT}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:CHAT,text:alertMessage(alert),disable_web_page_preview:true}),signal:AbortSignal.timeout(8000)});
     const answer=await response.json();
     if(!response.ok||!answer.ok) throw new Error(`Telegram HTTP ${response.status}: ${answer.description||'Unknown'}`);
     job.status='sent';job.sentAt=now();job.messageId=answer.result?.message_id;
@@ -174,14 +217,57 @@ if(DEMO) setInterval(()=>{
 },7500).unref();
 const contentTypes={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json; charset=utf-8','.ico':'image/x-icon'};
 function reply(res,code,payload){res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(payload));}
-function checkKey(req){if(!SECRET||SECRET.length<24)return false;const supplied=req.headers['x-api-key'];return typeof supplied==='string' && supplied.length===SECRET.length && crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(SECRET));}
+function extractToken(req, url) {
+  const h = req.headers['x-api-key'] || req.headers['authorization'];
+  if (h) {
+    if (h.startsWith('Bearer ')) return h.slice(7).trim();
+    return h.trim();
+  }
+  if (url && url.searchParams && url.searchParams.has('token')) {
+    return url.searchParams.get('token');
+  }
+  return null;
+}
+function checkKey(req){
+  if(!SECRET||SECRET.length<24)return false;
+  const token = extractToken(req);
+  return typeof token==='string' && token.length===SECRET.length && crypto.timingSafeEqual(Buffer.from(token),Buffer.from(SECRET));
+}
+function checkGatewayKey(req){
+  const token = req.headers['x-gateway-token'] || extractToken(req);
+  if(!token) return false;
+  const validKeys = [GATEWAY_KEY, SECRET].filter(k => k && k.length >= 24);
+  for(const k of validKeys){
+    if(token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k))){
+      return true;
+    }
+  }
+  return false;
+}
+function checkReadKey(req, url){
+  if(!REQUIRE_AUTH_FOR_READ) return true;
+  if(DEMO && isLoopback(req)) return true;
+  const token = extractToken(req, url);
+  if(!token) return false;
+  const validKeys = [SECRET, VIEWER_KEY, GATEWAY_KEY].filter(k => k && k.length >= 24);
+  for(const k of validKeys){
+    if(token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k))){
+      return true;
+    }
+  }
+  return false;
+}
 function isLoopback(req){const remote=req.socket.remoteAddress||'';return remote==='127.0.0.1'||remote==='::1'||remote==='::ffff:127.0.0.1';}
 async function body(req){let length=0,chunks=[];for await(const c of req){length+=c.length;if(length>16_384)throw Object.assign(new Error('Body too large'),{status:413});chunks.push(c);}let parsed=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('Expected JSON object');return parsed;}
 async function handler(req,res){
   const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);const p=url.pathname;
-  if(req.method==='GET'&&p==='/api/health')return reply(res,200,{ok:true,mode:DEMO?'demo':'live-ingest',telegramConfigured:Boolean(BOT&&CHAT),uptimeSeconds:Math.round(process.uptime())});
-  if(req.method==='GET'&&p==='/api/state')return reply(res,200,snapshot());
+  if(req.method==='GET'&&p==='/api/health')return reply(res,200,{ok:true,mode:DEMO?'demo':'live-ingest',telegramConfigured:Boolean(BOT&&CHAT),authEnforced:REQUIRE_AUTH_FOR_READ,uptimeSeconds:Math.round(process.uptime())});
+  if(req.method==='GET'&&p==='/api/state'){
+    if(!checkReadKey(req,url)) return reply(res,401,{error:'Authentication required to access state'});
+    return reply(res,200,snapshot());
+  }
   if(req.method==='GET'&&p==='/api/stream'){
+    if(!checkReadKey(req,url)) return reply(res,401,{error:'Authentication required to access stream'});
     res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no','X-Content-Type-Options':'nosniff'});
     clients.add(res);res.write(`retry: 3000\ndata: ${JSON.stringify(snapshot())}\n\n`);const interval=setInterval(()=>res.write(': ping\n\n'),20000);req.on('close',()=>{clearInterval(interval);clients.delete(res);});return;
   }
@@ -190,6 +276,81 @@ async function handler(req,res){
     const cols=['id','createdAt','stationId','stationName','region','title','severity','message','resolvedAt','acknowledgedAt','demo'];
     const csv=[cols.join(','),...store.alerts.map(a=>cols.map(k=>'"'+String(a[k]??'').replaceAll('"','""')+'"').join(','))].join('\r\n');
     res.writeHead(200,{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="aqua-alerts.csv"','Cache-Control':'no-store'});return res.end('\ufeff'+csv);
+  }
+  if(req.method==='POST'&&p==='/api/v1/ingest/telemetry'){
+    if(!checkGatewayKey(req)) return reply(res,401,{error:'Invalid or missing Gateway token'});
+    let b=await body(req);
+    if(!b.stationId||!safeId(b.stationId)) return reply(res,422,{error:'Valid stationId is required'});
+    if(!b.collectorId||typeof b.collectorId!=='string') return reply(res,422,{error:'Valid collectorId is required'});
+    if(!b.sourceTimestamp||isNaN(Date.parse(b.sourceTimestamp))) return reply(res,422,{error:'Valid ISO-8601 sourceTimestamp required'});
+    if(!b.points||typeof b.points!=='object'||Array.isArray(b.points)) return reply(res,422,{error:'Points dictionary is required'});
+
+    const s=stations.find(x=>x.id===b.stationId);
+    if(!s) return reply(res,404,{error:`Unknown station ID: ${b.stationId}`});
+
+    const fieldKeywords={
+      PT:'pressureBar',pressure:'pressureBar',
+      LT:'tankLevelPct',tank:'tankLevelPct',
+      FT:'flowM3h',flow:'flowM3h',
+      AT_01:'turbidityNtu',turbidity:'turbidityNtu',
+      AT_02:'chlorineMgL',chlorine:'chlorineMgL'
+    };
+    const bounds={
+      pressureBar:[0,15],tankLevelPct:[0,100],flowM3h:[0,100000],
+      turbidityNtu:[0,1000],chlorineMgL:[0,20]
+    };
+
+    let updatedAny=false,overallQuality='GOOD';
+    for(const [pointId,pt] of Object.entries(b.points)){
+      if(!pt||typeof pt!=='object') continue;
+      const val=pt.value;
+      const qual=pt.quality||'GOOD';
+      if(qual!=='GOOD') overallQuality=qual;
+      if(typeof val!=='number'||!Number.isFinite(val)){
+        return reply(res,422,{error:`Invalid numeric value for point ${pointId}`});
+      }
+      let targetField=null;
+      for(const [kw,fld] of Object.entries(fieldKeywords)){
+        if(pointId.includes(kw)){targetField=fld;break;}
+      }
+      if(!targetField) continue;
+      const [lo,hi]=bounds[targetField];
+      if(val<lo||val>hi){
+        return reply(res,422,{error:`Point ${pointId} value ${val} out of engineering bounds [${lo}, ${hi}]`});
+      }
+      s[targetField]=val;
+      updatedAny=true;
+    }
+    if(!updatedAny) return reply(res,422,{error:'No recognizable telemetry points provided'});
+
+    const incomingTime=new Date(b.sourceTimestamp).getTime();
+    const lastSeenTime=s.lastSeen ? new Date(s.lastSeen).getTime() : 0;
+    const isHistoricalReplay=incomingTime < (lastSeenTime - 15000);
+
+    s.dataClassification='AUTHORIZED_FIELD_TELEMETRY';
+    s.collectorId=b.collectorId;
+    s.sequenceNumber=b.sequenceNumber||s.sequenceNumber||0;
+    s.sourceTimestamp=b.sourceTimestamp;
+    s.quality=overallQuality;
+    s.online=overallQuality==='GOOD';
+    s.hasTelemetry=true;
+
+    if(!isHistoricalReplay){
+      s.lastSeen=now();
+      processRules(s,{demo:false});
+      const avg=field=>{const a=stations.map(x=>x[field]).filter(v=>typeof v==='number');return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;};
+      history.push({time:b.sourceTimestamp,pressure:num(avg('pressureBar'),2),flow:num(stations.reduce((a,x)=>a+(x.flowM3h||0),0)/1000,2),tank:num(avg('tankLevelPct'),1)});
+      if(history.length>96) history.shift();
+    }
+    broadcast();
+    return reply(res,200,{
+      ok:true,
+      stationId:s.id,
+      status:statusOf(s),
+      dataClassification:s.dataClassification,
+      isHistoricalReplay,
+      sequenceNumber:b.sequenceNumber
+    });
   }
   if(req.method==='POST'&&p==='/api/telemetry'){
     if(!checkKey(req))return reply(res,401,{error:'Invalid admin API key'});

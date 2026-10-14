@@ -1,0 +1,332 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "2.0.0",
+  "description": "AQUA COMMAND Chiang Mai Station & Assets Registry",
+  "pilot_scope": {
+    "authorized_branch_code": "1004",
+    "authorized_branch_name": "การประปาส่วนภูมิภาคสาขาเชียงใหม่ (ชั้นพิเศษ)",
+    "description": "ขอบเขตพื้นที่ที่ได้รับอนุญาตสำหรับนำร่องโครงการ Phase 1"
+  },
+  "data_classifications": [
+    { "code": "AUTHORIZED_FIELD_TELEMETRY", "description": "ข้อมูลเซนเซอร์ภาคสนามที่รับผ่าน Secure Ingestion API จาก Edge Collector ที่ได้รับอนุญาต" },
+    { "code": "PUBLIC_EXTERNAL", "description": "ข้อมูลสาธารณะจากเว็บไซต์ กปภ. หรือ กรมชลประทาน" },
+    { "code": "DEMO", "description": "ข้อมูลจำลองสำหรับทดสอบระบบ (Simulation)" }
+  ],
+  "stations": [
+    {
+      "id": "CM-01",
+      "name": "สถานีผลิตน้ำป่าตัน",
+      "name_en": "Pa Tan Water Treatment Plant",
+      "district": "เมืองเชียงใหม่",
+      "pwa_branch_code": "1004",
+      "pwa_branch_name": "กปภ.สาขาเชียงใหม่ (ชั้นพิเศษ)",
+      "scope_status": "AUTHORIZED_PILOT",
+      "rtu_plant_id": "1004-PATAN",
+      "lat": 18.824,
+      "lon": 98.995,
+      "px": 371.0,
+      "py": 248.8,
+      "x": 60.5,
+      "y": 45.7,
+      "points": {
+        "pressure": { "point_id": "CM01_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM01_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM01_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM01_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM01_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-02",
+      "name": "สถานีผลิตน้ำอุโมงค์",
+      "name_en": "Umong Water Treatment Plant",
+      "district": "เมืองเชียงใหม่",
+      "pwa_branch_code": "1004",
+      "pwa_branch_name": "กปภ.สาขาเชียงใหม่ (ชั้นพิเศษ)",
+      "scope_status": "AUTHORIZED_PILOT",
+      "rtu_plant_id": "1004-UMONG",
+      "lat": 18.790,
+      "lon": 98.955,
+      "px": 355.6,
+      "py": 254.7,
+      "x": 57.9,
+      "y": 46.9,
+      "points": {
+        "pressure": { "point_id": "CM02_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM02_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM02_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM02_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM02_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-03",
+      "name": "สถานีผลิตน้ำแม่กวง",
+      "name_en": "Mae Kuang Water Treatment Plant",
+      "district": "สันทราย",
+      "pwa_branch_code": "1004",
+      "pwa_branch_name": "กปภ.สาขาเชียงใหม่ (ชั้นพิเศษ)",
+      "scope_status": "AUTHORIZED_PILOT",
+      "rtu_plant_id": "1004-MAEKUANG",
+      "lat": 18.855,
+      "lon": 99.045,
+      "px": 390.2,
+      "py": 243.5,
+      "x": 63.8,
+      "y": 44.7,
+      "points": {
+        "pressure": { "point_id": "CM03_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM03_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM03_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM03_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM03_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-04",
+      "name": "สถานีผลิตน้ำแม่แฝก",
+      "name_en": "Mae Faek Water Treatment Plant",
+      "district": "สันทราย",
+      "pwa_branch_code": "1004",
+      "pwa_branch_name": "กปภ.สาขาเชียงใหม่ (ชั้นพิเศษ)",
+      "scope_status": "AUTHORIZED_PILOT",
+      "rtu_plant_id": "1004-MAEFAEK",
+      "lat": 19.005,
+      "lon": 99.020,
+      "px": 380.6,
+      "py": 217.7,
+      "x": 62.2,
+      "y": 39.5,
+      "points": {
+        "pressure": { "point_id": "CM04_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM04_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM04_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM04_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM04_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-05",
+      "name": "สถานีจ่ายน้ำแม่ริม",
+      "name_en": "Mae Rim Booster Station",
+      "district": "แม่ริม",
+      "pwa_branch_code": "1005",
+      "pwa_branch_name": "กปภ.สาขาแม่ริม",
+      "scope_status": "OUT_OF_PILOT_SCOPE",
+      "rtu_plant_id": "1005-MAERIM",
+      "lat": 18.915,
+      "lon": 98.945,
+      "px": 351.8,
+      "py": 233.2,
+      "x": 57.2,
+      "y": 42.6,
+      "points": {
+        "pressure": { "point_id": "CM05_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM05_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM05_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM05_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM05_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-06",
+      "name": "สถานีผลิตน้ำสันกำแพง",
+      "name_en": "San Kamphaeng Water Treatment Plant",
+      "district": "สันกำแพง",
+      "pwa_branch_code": "1006",
+      "pwa_branch_name": "กปภ.สาขาสันกำแพง",
+      "scope_status": "OUT_OF_PILOT_SCOPE",
+      "rtu_plant_id": "1006-SANKAMPHAENG",
+      "lat": 18.745,
+      "lon": 99.120,
+      "px": 419.1,
+      "py": 262.4,
+      "x": 68.8,
+      "y": 48.5,
+      "points": {
+        "pressure": { "point_id": "CM06_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM06_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM06_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM06_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM06_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-07",
+      "name": "สถานีจ่ายน้ำหางดง",
+      "name_en": "Hang Dong Booster Station",
+      "district": "หางดง",
+      "pwa_branch_code": "1004",
+      "pwa_branch_name": "กปภ.สาขาเชียงใหม่ (ชั้นพิเศษ)",
+      "scope_status": "AUTHORIZED_PILOT",
+      "rtu_plant_id": "1004-HANGDONG",
+      "lat": 18.685,
+      "lon": 98.915,
+      "px": 340.2,
+      "py": 272.8,
+      "x": 55.2,
+      "y": 50.5,
+      "points": {
+        "pressure": { "point_id": "CM07_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM07_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM07_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM07_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM07_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-08",
+      "name": "สถานีจ่ายน้ำสารภี",
+      "name_en": "Saraphi Booster Station",
+      "district": "สารภี",
+      "pwa_branch_code": "1004",
+      "pwa_branch_name": "กปภ.สาขาเชียงใหม่ (ชั้นพิเศษ)",
+      "scope_status": "AUTHORIZED_PILOT",
+      "rtu_plant_id": "1004-SARAPHI",
+      "lat": 18.710,
+      "lon": 99.035,
+      "px": 386.4,
+      "py": 268.5,
+      "x": 63.2,
+      "y": 49.7,
+      "points": {
+        "pressure": { "point_id": "CM08_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM08_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM08_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM08_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM08_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-09",
+      "name": "สถานีผลิตน้ำแม่แตง",
+      "name_en": "Mae Taeng Water Treatment Plant",
+      "district": "แม่แตง",
+      "pwa_branch_code": "1007",
+      "pwa_branch_name": "กปภ.สาขาแม่แตง",
+      "scope_status": "OUT_OF_PILOT_SCOPE",
+      "rtu_plant_id": "1007-MAETAENG",
+      "lat": 19.125,
+      "lon": 98.940,
+      "px": 349.8,
+      "py": 197.0,
+      "x": 56.9,
+      "y": 35.4,
+      "points": {
+        "pressure": { "point_id": "CM09_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM09_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM09_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM09_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM09_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-10",
+      "name": "สถานีผลิตน้ำจอมทอง",
+      "name_en": "Chom Thong Water Treatment Plant",
+      "district": "จอมทอง",
+      "pwa_branch_code": "1008",
+      "pwa_branch_name": "กปภ.สาขาจอมทอง",
+      "scope_status": "OUT_OF_PILOT_SCOPE",
+      "rtu_plant_id": "1008-CHOMTHONG",
+      "lat": 18.420,
+      "lon": 98.680,
+      "px": 249.8,
+      "py": 318.4,
+      "x": 39.6,
+      "y": 59.7,
+      "points": {
+        "pressure": { "point_id": "CM10_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM10_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM10_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM10_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM10_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-11",
+      "name": "สถานีผลิตน้ำฝาง",
+      "name_en": "Fang Water Treatment Plant",
+      "district": "ฝาง",
+      "pwa_branch_code": "1009",
+      "pwa_branch_name": "กปภ.สาขาฝาง",
+      "scope_status": "OUT_OF_PILOT_SCOPE",
+      "rtu_plant_id": "1009-FANG",
+      "lat": 19.915,
+      "lon": 99.210,
+      "px": 453.7,
+      "py": 61.0,
+      "x": 74.8,
+      "y": 8.2,
+      "points": {
+        "pressure": { "point_id": "CM11_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM11_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM11_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM11_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM11_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    },
+    {
+      "id": "CM-12",
+      "name": "สถานีผลิตน้ำฮอด",
+      "name_en": "Hot Water Treatment Plant",
+      "district": "ฮอด",
+      "pwa_branch_code": "1030",
+      "pwa_branch_name": "กปภ.สาขาฮอด",
+      "scope_status": "OUT_OF_PILOT_SCOPE",
+      "rtu_plant_id": "1030-HOT",
+      "lat": 18.190,
+      "lon": 98.610,
+      "px": 222.8,
+      "py": 358.0,
+      "x": 35.0,
+      "y": 67.6,
+      "points": {
+        "pressure": { "point_id": "CM12_PT_01", "unit": "bar", "min": 0, "max": 10, "warn_low": 1.5, "crit_low": 0.9 },
+        "tank_level": { "point_id": "CM12_LT_01", "unit": "%", "min": 0, "max": 100, "warn_low": 35, "crit_low": 20 },
+        "flow": { "point_id": "CM12_FT_01", "unit": "m3/h", "min": 0, "max": 50000 },
+        "turbidity": { "point_id": "CM12_AT_01", "unit": "NTU", "min": 0, "max": 100, "warn_high": 1.0, "crit_high": 4.0 },
+        "chlorine": { "point_id": "CM12_AT_02", "unit": "mg/L", "min": 0, "max": 10, "warn_low": 0.2, "crit_low": 0.1 }
+      }
+    }
+  ],
+  "reservoirs": [
+    {
+      "id": "RES-01",
+      "name": "เขื่อนแม่งัดสมบูรณ์ชล",
+      "name_en": "Mae Ngat Somboon Chon Dam",
+      "source_authority": "Royal Irrigation Department (RID)",
+      "data_classification": "PUBLIC_EXTERNAL",
+      "district": "แม่แตง",
+      "capacity_mcm": 265.0,
+      "storage_mcm": 212.5,
+      "storage_pct": 80.2,
+      "inflow_m3s": 14.2,
+      "outflow_m3s": 8.5
+    },
+    {
+      "id": "RES-02",
+      "name": "เขื่อนแม่กวงอุดมธารา",
+      "name_en": "Mae Kuang Udom Thara Dam",
+      "source_authority": "Royal Irrigation Department (RID)",
+      "data_classification": "PUBLIC_EXTERNAL",
+      "district": "ดอยสะเก็ด",
+      "capacity_mcm": 263.0,
+      "storage_mcm": 189.4,
+      "storage_pct": 72.0,
+      "inflow_m3s": 11.8,
+      "outflow_m3s": 6.2
+    },
+    {
+      "id": "RES-03",
+      "name": "จุดสูบน้ำดิบแม่น้ำปิง (ป่าตัน)",
+      "name_en": "Ping River Raw Water Intake",
+      "source_authority": "PWA Chiang Mai Special Class",
+      "data_classification": "PUBLIC_EXTERNAL",
+      "district": "เมืองเชียงใหม่",
+      "water_level_m": 3.45,
+      "threshold_m": 3.70,
+      "storage_pct": 93.2
+    }
+  ]
+}

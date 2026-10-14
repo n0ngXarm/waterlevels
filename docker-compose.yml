@@ -14,7 +14,7 @@ services:
       PORT: 8787
       TZ: Asia/Bangkok
     ports:
-      - "8787:8787"
+      - "${AQUA_BIND_IP:-127.0.0.1}:8787:8787"
     volumes:
       - ./aqua-command/storage:/app/storage
     healthcheck:

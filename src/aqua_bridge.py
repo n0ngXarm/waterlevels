@@ -35,9 +35,10 @@ class AquaBridge:
     """Sends telemetry and incidents into Aqua Command Center dashboard."""
 
     def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None):
-        # Default internal URL or localhost
         self.base_url = base_url or os.getenv("AQUA_COMMAND_URL", "http://127.0.0.1:8787")
-        self.api_key = api_key or os.getenv("ADMIN_API_KEY", "pwa-aqua-admin-key-2026-super-secret-key-32ch")
+        self.api_key = api_key or os.getenv("ADMIN_API_KEY", "")
+        if not self.api_key:
+            logger.warning("ADMIN_API_KEY is not configured for AquaBridge. Authenticated endpoints will reject requests.")
 
     def _post(self, path: str, payload: dict[str, Any]) -> bool:
         """Makes an authenticated POST request to Aqua Command Center."""
