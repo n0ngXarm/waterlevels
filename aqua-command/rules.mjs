@@ -23,8 +23,14 @@ export function evaluateTelemetry(station) {
 export function alertMessage(alert) {
   const icons = {critical: '🔴', warning: '🟠', resolved: '🟢', info: '🔵'};
   const tag = alert.demo ? '[DEMO] ' : '';
-  return `${icons[alert.severity] || '🔔'} ${tag}AQUA COMMAND — ${alert.severity.toUpperCase()}\n` +
-    `เหตุการณ์: ${alert.title}\nสถานี: ${alert.stationName}\nพื้นที่: ${alert.region}\n` +
-    `รายละเอียด: ${alert.message}\nเวลา: ${new Intl.DateTimeFormat('th-TH', {timeZone:'Asia/Bangkok', dateStyle:'medium', timeStyle:'medium'}).format(new Date(alert.createdAt))}\n` +
-    `รหัสเหตุการณ์: ${alert.id}\nแหล่งข้อมูล: ${alert.demo?'ข้อมูลจำลอง':'ข้อมูลที่รับผ่าน API'}`;
+  const area = alert.region ? (alert.region.includes('เชียงใหม่') ? alert.region : `${alert.region}, เชียงใหม่`) : 'จังหวัดเชียงใหม่';
+  return `${icons[alert.severity] || '🔔'} ${tag}AQUA COMMAND — CHIANG MAI (${alert.severity.toUpperCase()})\n` +
+    `ระดับ: ${alert.severity.toUpperCase()}\n` +
+    `เหตุการณ์: ${alert.title}\n` +
+    `สถานี: ${alert.stationName}\n` +
+    `พื้นที่: ${area}\n` +
+    `รายละเอียด: ${alert.message}\n` +
+    `เวลา: ${new Intl.DateTimeFormat('th-TH', {timeZone:'Asia/Bangkok', dateStyle:'medium', timeStyle:'medium'}).format(new Date(alert.createdAt))}\n` +
+    `รหัสเหตุการณ์: ${alert.id}\n` +
+    `แหล่งข้อมูล: ${alert.demo ? 'ข้อมูลจำลอง / DEMO' : 'ระบบตรวจวัด กปภ. เชียงใหม่'}`;
 }

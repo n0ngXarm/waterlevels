@@ -10,23 +10,24 @@ from src.config import Config
 
 logger = logging.getLogger(__name__)
 
-# Mapping from PWA station name keywords to Aqua Command station IDs
+# Mapping from PWA station and branch keywords to Aqua Command Chiang Mai station IDs
 STATION_MAP = {
+    "ป่าตัน": "CM-01",
     "เชียงใหม่": "CM-01",
-    "เชียงราย": "CR-02",
-    "ลำพูน": "LP-03",
-    "พิษณุโลก": "PL-04",
-    "ขอนแก่น": "KK-05",
-    "อุดรธานี": "UD-06",
-    "นครราชสีมา": "NR-07",
-    "พระนครศรีอยุธยา": "AY-08",
-    "อยุธยา": "AY-08",
-    "ชลบุรี": "CB-09",
-    "ระยอง": "RY-10",
-    "ประจวบคีรีขันธ์": "PK-11",
-    "ประจวบ": "PK-11",
-    "สงขลา": "SK-12",
-    "หาดใหญ่": "SK-12",
+    "อุโมงค์": "CM-02",
+    "สุเทพ": "CM-02",
+    "แม่กวง": "CM-03",
+    "สันทราย": "CM-03",
+    "แม่แฝก": "CM-04",
+    "แม่ริม": "CM-05",
+    "สันกำแพง": "CM-06",
+    "หางดง": "CM-07",
+    "สารภี": "CM-08",
+    "แม่แตง": "CM-09",
+    "เมืองแกน": "CM-09",
+    "จอมทอง": "CM-10",
+    "ฝาง": "CM-11",
+    "ฮอด": "CM-12",
 }
 
 

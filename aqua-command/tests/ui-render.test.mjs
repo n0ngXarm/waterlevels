@@ -14,7 +14,7 @@ test('all five dashboard views render with mock telemetry',async()=>{
  const ctx=createContext({console,document:doc,window:{scrollTo(){}},setInterval(){},setTimeout(){},clearTimeout(){},fetch:async()=>({ok:true,json:async()=>fixture}),EventSource:class{},Intl,Date,Math,Number,JSON,String,Array,Object,Set,Promise,URL});
  runInContext(readFileSync(path.join(root,'public','app.js'),'utf8'),ctx);
  await new Promise(resolve=>setTimeout(resolve,10));
- for(const page of ['overview','stations','alerts','analytics','settings']){
+ for(const page of ['overview','map','stations','alerts','analytics','settings']){
   runInContext(`state.view='${page}';render()`,ctx);
   assert.match(app.innerHTML,/<main class="content">/);
   assert.match(app.innerHTML,/<h1>/);

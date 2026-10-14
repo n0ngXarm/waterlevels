@@ -27,18 +27,23 @@ const now = () => new Date().toISOString();
 const num = (n,d=1) => Math.round(n*10**d)/10**d;
 const safeId = v => typeof v === 'string' && /^[\w-]{2,64}$/.test(v);
 const stations = [
-  {id:'CM-01',name:'เชียงใหม่',region:'ภาคเหนือ',zone:'เหนือ',x:30,y:24,pressureBar:2.84,tankLevelPct:78,flowM3h:2860,turbidityNtu:0.48,chlorineMgL:0.54,online:true},
-  {id:'CR-02',name:'เชียงราย',region:'ภาคเหนือ',zone:'เหนือ',x:45,y:14,pressureBar:2.56,tankLevelPct:71,flowM3h:1860,turbidityNtu:0.33,chlorineMgL:0.48,online:true},
-  {id:'LP-03',name:'ลำพูน',region:'ภาคเหนือ',zone:'เหนือ',x:40,y:32,pressureBar:2.44,tankLevelPct:64,flowM3h:1480,turbidityNtu:0.52,chlorineMgL:0.45,online:true},
-  {id:'PL-04',name:'พิษณุโลก',region:'ภาคเหนือ',zone:'เหนือ',x:54,y:41,pressureBar:2.72,tankLevelPct:81,flowM3h:2120,turbidityNtu:0.41,chlorineMgL:0.43,online:true},
-  {id:'KK-05',name:'ขอนแก่น',region:'ภาคอีสาน',zone:'อีสาน',x:70,y:48,pressureBar:1.21,tankLevelPct:53,flowM3h:1980,turbidityNtu:0.61,chlorineMgL:0.35,online:true},
-  {id:'UD-06',name:'อุดรธานี',region:'ภาคอีสาน',zone:'อีสาน',x:78,y:34,pressureBar:2.67,tankLevelPct:74,flowM3h:1740,turbidityNtu:0.39,chlorineMgL:0.51,online:true},
-  {id:'NR-07',name:'นครราชสีมา',region:'ภาคอีสาน',zone:'อีสาน',x:70,y:61,pressureBar:2.95,tankLevelPct:68,flowM3h:3250,turbidityNtu:0.32,chlorineMgL:0.54,online:true},
-  {id:'AY-08',name:'พระนครศรีอยุธยา',region:'ภาคกลาง',zone:'กลาง',x:52,y:60,pressureBar:2.59,tankLevelPct:83,flowM3h:2910,turbidityNtu:0.46,chlorineMgL:0.49,online:true},
-  {id:'CB-09',name:'ชลบุรี',region:'ภาคตะวันออก',zone:'ตะวันออก',x:67,y:72,pressureBar:2.62,tankLevelPct:62,flowM3h:3420,turbidityNtu:0.44,chlorineMgL:0.55,online:true},
-  {id:'RY-10',name:'ระยอง',region:'ภาคตะวันออก',zone:'ตะวันออก',x:80,y:78,pressureBar:2.75,tankLevelPct:75,flowM3h:2670,turbidityNtu:4.6,chlorineMgL:0.47,online:true},
-  {id:'PK-11',name:'ประจวบคีรีขันธ์',region:'ภาคใต้',zone:'ใต้',x:40,y:78,pressureBar:2.31,tankLevelPct:68,flowM3h:1640,turbidityNtu:0.42,chlorineMgL:0.41,online:true},
-  {id:'SK-12',name:'สงขลา',region:'ภาคใต้',zone:'ใต้',x:56,y:93,pressureBar:2.87,tankLevelPct:23,flowM3h:2430,turbidityNtu:0.47,chlorineMgL:0.55,online:true}
+  {id:'CM-01',name:'สถานีผลิตน้ำป่าตัน',district:'เมืองเชียงใหม่',region:'อำเภอเมืองเชียงใหม่',zone:'โซนเมือง',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.824,lon:98.995,px:371.0,py:248.8,x:60.5,y:45.7,pressureBar:2.84,tankLevelPct:78,flowM3h:2860,turbidityNtu:0.48,chlorineMgL:0.54,online:true},
+  {id:'CM-02',name:'สถานีผลิตน้ำอุโมงค์',district:'เมืองเชียงใหม่',region:'อำเภอเมืองเชียงใหม่',zone:'โซนเมือง',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.790,lon:98.955,px:355.6,py:254.7,x:57.9,y:46.9,pressureBar:2.65,tankLevelPct:82,flowM3h:1950,turbidityNtu:0.38,chlorineMgL:0.51,online:true},
+  {id:'CM-03',name:'สถานีผลิตน้ำแม่กวง',district:'สันทราย',region:'อำเภอสันทราย',zone:'โซนตะวันออก',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.855,lon:99.045,px:390.2,py:243.5,x:63.8,y:44.7,pressureBar:2.72,tankLevelPct:74,flowM3h:1820,turbidityNtu:0.42,chlorineMgL:0.48,online:true},
+  {id:'CM-04',name:'สถานีผลิตน้ำแม่แฝก',district:'สันทราย',region:'อำเภอสันทราย',zone:'โซนเหนือ',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:19.005,lon:99.020,px:380.6,py:217.7,x:62.2,y:39.5,pressureBar:2.45,tankLevelPct:69,flowM3h:940,turbidityNtu:0.35,chlorineMgL:0.49,online:true},
+  {id:'CM-05',name:'สถานีจ่ายน้ำแม่ริม',district:'แม่ริม',region:'อำเภอแม่ริม',zone:'โซนเหนือ',pwaBranch:'กปภ.สาขาแม่ริม',lat:18.915,lon:98.945,px:351.8,py:233.2,x:57.2,y:42.6,pressureBar:2.58,tankLevelPct:71,flowM3h:1420,turbidityNtu:0.44,chlorineMgL:0.46,online:true},
+  {id:'CM-06',name:'สถานีผลิตน้ำสันกำแพง',district:'สันกำแพง',region:'อำเภอสันกำแพง',zone:'โซนตะวันออก',pwaBranch:'กปภ.สาขาสันกำแพง',lat:18.745,lon:99.120,px:419.1,py:262.4,x:68.8,y:48.5,pressureBar:2.35,tankLevelPct:65,flowM3h:1150,turbidityNtu:0.51,chlorineMgL:0.44,online:true},
+  {id:'CM-07',name:'สถานีจ่ายน้ำหางดง',district:'หางดง',region:'อำเภอหางดง',zone:'โซนใต้',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.685,lon:98.915,px:340.2,py:272.8,x:55.2,y:50.5,pressureBar:2.48,tankLevelPct:68,flowM3h:1280,turbidityNtu:0.39,chlorineMgL:0.52,online:true},
+  {id:'CM-08',name:'สถานีจ่ายน้ำสารภี',district:'สารภี',region:'อำเภอสารภี',zone:'โซนใต้',pwaBranch:'กปภ.สาขาเชียงใหม่ (พ)',lat:18.710,lon:99.035,px:386.4,py:268.5,x:63.2,y:49.7,pressureBar:2.61,tankLevelPct:77,flowM3h:1360,turbidityNtu:0.41,chlorineMgL:0.50,online:true},
+  {id:'CM-09',name:'สถานีผลิตน้ำแม่แตง',district:'แม่แตง',region:'อำเภอแม่แตง',zone:'โซนเหนือ',pwaBranch:'กปภ.สาขาแม่แตง',lat:19.125,lon:98.940,px:349.8,py:197.0,x:56.9,y:35.4,pressureBar:2.38,tankLevelPct:64,flowM3h:880,turbidityNtu:0.45,chlorineMgL:0.47,online:true},
+  {id:'CM-10',name:'สถานีผลิตน้ำจอมทอง',district:'จอมทอง',region:'อำเภอจอมทอง',zone:'โซนใต้',pwaBranch:'กปภ.สาขาจอมทอง',lat:18.420,lon:98.680,px:249.8,py:318.4,x:39.6,y:59.7,pressureBar:2.52,tankLevelPct:73,flowM3h:1020,turbidityNtu:0.40,chlorineMgL:0.45,online:true},
+  {id:'CM-11',name:'สถานีผลิตน้ำฝาง',district:'ฝาง',region:'อำเภอฝาง',zone:'โซนเหนือสุด',pwaBranch:'กปภ.สาขาฝาง',lat:19.915,lon:99.210,px:453.7,py:61.0,x:74.8,y:8.2,pressureBar:2.42,tankLevelPct:66,flowM3h:950,turbidityNtu:0.43,chlorineMgL:0.43,online:true},
+  {id:'CM-12',name:'สถานีผลิตน้ำฮอด',district:'ฮอด',region:'อำเภอฮอด',zone:'โซนใต้สุด',pwaBranch:'กปภ.สาขาฮอด',lat:18.190,lon:98.610,px:222.8,py:358.0,x:35.0,y:67.6,pressureBar:2.30,tankLevelPct:61,flowM3h:760,turbidityNtu:0.46,chlorineMgL:0.42,online:true}
+];
+const reservoirs = [
+  {id:'RES-01',name:'เขื่อนแม่งัดสมบูรณ์ชล',nameEn:'Mae Ngat Somboon Chon Dam',district:'แม่แตง',capacityMcm:265.0,storageMcm:212.5,storagePct:80.2,inflowM3s:14.2,outflowM3s:8.5,status:'normal',statusText:'ปกติ (80.2%)'},
+  {id:'RES-02',name:'เขื่อนแม่กวงอุดมธารา',nameEn:'Mae Kuang Udom Thara Dam',district:'ดอยสะเก็ด',capacityMcm:263.0,storageMcm:189.4,storagePct:72.0,inflowM3s:11.8,outflowM3s:6.2,status:'normal',statusText:'ปกติ (72.0%)'},
+  {id:'RES-03',name:'จุดสูบน้ำดิบแม่น้ำปิง (ป่าตัน)',nameEn:'Ping River Raw Water Intake',district:'เมืองเชียงใหม่',capacityMcm:null,waterLevelM:3.45,thresholdM:3.70,storagePct:93.2,status:'normal',statusText:'ระดับน้ำปกติ (3.45 ม.รทก.)'}
 ];
 for (const s of stations) {
   s.hasTelemetry=DEMO;
@@ -66,7 +71,39 @@ function snapshot() {
   const mean=field=>{const values=valid.map(s=>s[field]).filter(v=>typeof v==='number');return values.length?values.reduce((a,b)=>a+b,0)/values.length:0;};
   const alertCounts={critical:store.alerts.filter(a=>a.severity==='critical'&&!a.resolvedAt&&!a.supersededAt).length,warning:store.alerts.filter(a=>a.severity==='warning'&&!a.resolvedAt&&!a.supersededAt).length};
   const activeStationAlerts=details.filter(s=>s.status!=='normal').length;
-  return {serverTime:now(),mode:DEMO?'demo':'live-ingest',stations:details,history,alerts:store.alerts.slice(0,100),queueStats:{pending:store.queue.filter(x=>x.status==='pending').length,failed:store.queue.filter(x=>x.status==='failed').length,sent:store.queue.filter(x=>x.status==='sent').length},queueRecent:store.queue.slice(-8).reverse().map(j=>({id:j.id,alertId:j.alertId,status:j.status,attempt:j.attempt,createdAt:j.createdAt,sentAt:j.sentAt||null,lastError:j.lastError||null})),metrics:{total:details.length,online:details.filter(x=>x.online).length,normal:details.filter(x=>x.status==='normal').length,warning:details.filter(x=>x.status==='warning').length,critical:details.filter(x=>x.status==='critical').length,activeStations:activeStationAlerts,pressure:num(mean('pressureBar'),2),tank:num(mean('tankLevelPct'),1),flow:Math.round(valid.reduce((a,s)=>a+(s.flowM3h||0),0)),turbidity:num(mean('turbidityNtu'),2),activeAlertCount:alertCounts.critical+alertCounts.warning},telegram:{configured:Boolean(BOT&&CHAT),demoForwarding:SEND_DEMO,reminderMinutes:REMINDER_MS/60},rules:RULES.map(({id,title,warning,critical,unit,direction})=>({id,title,warning,critical,unit,direction}))};
+  const resAvg=Math.round(reservoirs.reduce((a,r)=>a+(r.storagePct||0),0)/reservoirs.length*10)/10;
+  return {
+    province:'เชียงใหม่',
+    serverTime:now(),
+    mode:DEMO?'demo':'live-ingest',
+    stations:details,
+    reservoirs,
+    history,
+    alerts:store.alerts.slice(0,100),
+    queueStats:{
+      pending:store.queue.filter(x=>x.status==='pending').length,
+      failed:store.queue.filter(x=>x.status==='failed').length,
+      sent:store.queue.filter(x=>x.status==='sent').length
+    },
+    queueRecent:store.queue.slice(-8).reverse().map(j=>({id:j.id,alertId:j.alertId,status:j.status,attempt:j.attempt,createdAt:j.createdAt,sentAt:j.sentAt||null,lastError:j.lastError||null})),
+    metrics:{
+      total:details.length,
+      online:details.filter(x=>x.online).length,
+      normal:details.filter(x=>x.status==='normal').length,
+      warning:details.filter(x=>x.status==='warning').length,
+      critical:details.filter(x=>x.status==='critical').length,
+      activeStations:activeStationAlerts,
+      pressure:num(mean('pressureBar'),2),
+      tank:num(mean('tankLevelPct'),1),
+      flow:Math.round(valid.reduce((a,s)=>a+(s.flowM3h||0),0)),
+      turbidity:num(mean('turbidityNtu'),2),
+      chlorine:num(mean('chlorineMgL'),2),
+      reservoirAvgPct:resAvg,
+      activeAlertCount:alertCounts.critical+alertCounts.warning
+    },
+    telegram:{configured:Boolean(BOT&&CHAT),demoForwarding:SEND_DEMO,reminderMinutes:REMINDER_MS/60},
+    rules:RULES.map(({id,title,warning,critical,unit,direction})=>({id,title,warning,critical,unit,direction}))
+  };
 }
 const clients = new Set();
 function broadcast() {const message=`data: ${JSON.stringify(snapshot())}\n\n`;for(const c of clients) try{c.write(message);}catch{clients.delete(c);}}
