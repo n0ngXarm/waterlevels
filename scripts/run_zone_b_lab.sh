@@ -179,7 +179,7 @@ case "${ACTION}" in
         done
 
         # 1. Local Health Verification
-        echo "==> [VERIFY 1/6] Probing local health endpoint (http://127.0.0.1:8788/api/health)..."
+        echo "==> [VERIFY 1/7] Probing local health endpoint (http://127.0.0.1:8788/api/health)..."
         HEALTH_RES=$(curl -sS http://127.0.0.1:8788/api/health)
         echo "    Response: ${HEALTH_RES}"
         if ! echo "${HEALTH_RES}" | grep -q '"ok":true'; then
@@ -192,7 +192,7 @@ case "${ACTION}" in
         fi
 
         # 2. Unauthenticated Read Rejection (401)
-        echo "==> [VERIFY 2/6] Verifying unauthenticated /api/state rejection (HTTP 401)..."
+        echo "==> [VERIFY 2/7] Verifying unauthenticated /api/state rejection (HTTP 401)..."
         UNAUTH_HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8788/api/state)
         echo "    Unauthenticated /api/state HTTP Status: ${UNAUTH_HTTP}"
         if [ "${UNAUTH_HTTP}" != "401" ]; then
@@ -201,7 +201,7 @@ case "${ACTION}" in
         fi
 
         # 3. Viewer Authentication & Session Cookie Issuance
-        echo "==> [VERIFY 3/6] Verifying Viewer Login & Session Cookie..."
+        echo "==> [VERIFY 3/7] Verifying Viewer Login & Session Cookie..."
         VIEWER_KEY=$(python3 -c "
 with open('${ENV_FILE}') as f:
     for line in f:
@@ -214,28 +214,27 @@ with open('${ENV_FILE}') as f:
         
         SESSION_COOKIE=$(echo "${LOGIN_RESP_HEADERS}" | grep -i "set-cookie:" | grep -o "aqua_session=[^;]*" | head -n1 || echo "")
         if [ -n "${SESSION_COOKIE}" ]; then
-            echo "    Viewer Login: SUCCESS (Received session cookie)"
+            echo "    Viewer Login: SUCCESS (Received session cookie, credential redacted)"
         else
             echo "[ERROR] Viewer login failed. No session cookie received."
             exit 1
         fi
 
         # 4. HTTPS Reverse Proxy Simulation (Checking Secure, HttpOnly, SameSite)
-        echo "==> [VERIFY 4/6] Verifying HTTPS Proxy dynamic Cookie attributes (Secure, HttpOnly, SameSite)..."
+        echo "==> [VERIFY 4/7] Verifying HTTPS Proxy dynamic Cookie attributes (Secure, HttpOnly, SameSite)..."
         HTTPS_HEADERS=$(curl -sS -i -X POST http://127.0.0.1:8788/api/auth/login \
             -H "Content-Type: application/json" \
             -H "X-Forwarded-Proto: https" \
             -d "{\"key\": \"${VIEWER_KEY}\"}")
         
-        SET_COOKIE_HTTPS=$(echo "${HTTPS_HEADERS}" | grep -i "set-cookie:" | head -n1)
-        echo "    Set-Cookie over HTTPS: ${SET_COOKIE_HTTPS}"
+        SET_COOKIE_HTTPS=$(echo "${HTTPS_HEADERS}" | grep -i "^set-cookie:" | head -n1)
         for attr in "Secure" "HttpOnly" "SameSite=Lax"; do
             if ! echo "${SET_COOKIE_HTTPS}" | grep -qi "${attr}"; then
                 echo "[ERROR] Missing ${attr} attribute in HTTPS session cookie!"
                 exit 1
             fi
         done
-        echo "    Cookie Security Attributes: Verified (Secure; HttpOnly; SameSite=Lax)"
+        echo "    Cookie Security Attributes: Verified (Secure; HttpOnly; SameSite=Lax present, cookie redacted)"
 
         # 5. Realtime SSE Stream Verification (/api/stream)
         echo "==> [VERIFY 5/7] Verifying SSE Realtime Stream authentication & payload..."
