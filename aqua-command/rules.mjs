@@ -22,12 +22,21 @@ export function evaluateTelemetry(station) {
 
 export function alertMessage(alert) {
   const icons = {critical: '🔴', warning: '🟠', resolved: '🟢', info: '🔵'};
-  const isSimulated = Boolean(alert.demo || alert.dataClassification === 'SIMULATED_LAB');
-  const tag = alert.dataClassification === 'SIMULATED_LAB' ? '[SIMULATED_LAB] ' : (alert.demo ? '[DEMO] ' : '');
+  const isSimulated = Boolean(alert.demo || alert.dataClassification === 'SIMULATED_LAB' || alert.origin === 'ADMIN_SIMULATION');
+  const tag = alert.origin === 'ADMIN_SIMULATION'
+    ? '[SIMULATION_OVERLAY] '
+    : (alert.dataClassification === 'SIMULATED_LAB' ? '[SIMULATED_LAB] ' : (alert.demo ? '[DEMO] ' : ''));
   const area = alert.region ? (alert.region.includes('เชียงใหม่') ? alert.region : `${alert.region}, เชียงใหม่`) : 'จังหวัดเชียงใหม่';
-  const sourceLabel = isSimulated
-    ? (alert.dataClassification === 'SIMULATED_LAB' ? 'ข้อมูลจำลองห้องปฏิบัติการ (SIMULATED_LAB)' : 'ข้อมูลจำลอง / DEMO')
-    : 'ระบบตรวจวัด กปภ. เชียงใหม่';
+  let sourceLabel = 'ระบบตรวจวัด กปภ. เชียงใหม่';
+  if (alert.origin === 'ADMIN_SIMULATION') {
+    sourceLabel = 'จำลองเหตุการณ์ผู้ดูแลระบบ (ADMIN_SIMULATION OVERLAY)';
+  } else if (alert.origin === 'GATEWAY_INGEST') {
+    sourceLabel = alert.dataClassification === 'SIMULATED_LAB'
+      ? 'ข้อมูลเกตเวย์ทดสอบห้องปฏิบัติการ (GATEWAY_INGEST / SIMULATED_LAB)'
+      : 'ข้อมูลเกตเวย์ภาคสนาม (GATEWAY_INGEST)';
+  } else if (isSimulated) {
+    sourceLabel = alert.dataClassification === 'SIMULATED_LAB' ? 'ข้อมูลจำลองห้องปฏิบัติการ (SIMULATED_LAB)' : 'ข้อมูลจำลอง / DEMO';
+  }
   return `${icons[alert.severity] || '🔔'} ${tag}AQUA COMMAND — CHIANG MAI (${alert.severity.toUpperCase()})\n` +
     `ระดับ: ${alert.severity.toUpperCase()}\n` +
     `เหตุการณ์: ${alert.title}\n` +

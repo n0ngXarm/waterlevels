@@ -22,7 +22,15 @@ const TELEGRAM_BASE = (process.env.TELEGRAM_API_BASE || 'https://api.telegram.or
 const SECRET = process.env.ADMIN_API_KEY || '';
 const VIEWER_KEY = process.env.VIEWER_API_KEY || '';
 const GATEWAY_KEY = process.env.GATEWAY_INGEST_KEY || '';
-const APP_ENV = (process.env.APP_ENV || (DEMO ? 'demo' : 'lab')).toLowerCase();
+const VALID_ENVIRONMENTS = new Set(['lab', 'demo', 'prod', 'production']);
+const rawEnv = (process.env.APP_ENV || (DEMO ? 'demo' : 'lab')).toLowerCase().trim();
+if (!VALID_ENVIRONMENTS.has(rawEnv)) {
+  console.error(`FATAL: Unsupported or invalid APP_ENV "${process.env.APP_ENV}". Supported environments: ${[...VALID_ENVIRONMENTS].join(', ')}. Failing closed.`);
+  process.exit(1);
+}
+const APP_ENV = rawEnv;
+const IS_SIMULATION_ALLOWED = APP_ENV === 'lab' || APP_ENV === 'demo';
+const IS_PRODUCTION_ENV = APP_ENV === 'prod' || APP_ENV === 'production';
 const REQUIRE_AUTH_FOR_READ = process.env.REQUIRE_AUTH_FOR_READ === 'true';
 const REMINDER_MS = Math.max(5, Number(process.env.REMINDER_MINUTES)||30)*60_000;
 const SEND_GAP = Math.max(10, Number(process.env.TELEGRAM_MIN_GAP_MS)||1400);
@@ -108,11 +116,14 @@ if (REGISTRY_PATH) {
       }));
     }
     if (Array.isArray(reg.authorized_gateways)) {
-      if (APP_ENV === 'lab' || APP_ENV === 'demo') {
+      if (IS_SIMULATION_ALLOWED) {
         // In Lab/Demo environment, partition off Production gateways completely
         authorizedGateways = reg.authorized_gateways.filter(g => g.environment === 'LAB');
+      } else if (IS_PRODUCTION_ENV) {
+        // In Prod/Production environment, only authorize PROD gateways
+        authorizedGateways = reg.authorized_gateways.filter(g => g.environment === 'PROD');
       } else {
-        authorizedGateways = reg.authorized_gateways;
+        authorizedGateways = [];
       }
     }
   } catch (err) {
@@ -120,10 +131,15 @@ if (REGISTRY_PATH) {
   }
 }
 for (const s of stations) {
-  s.hasTelemetry=DEMO;
-  s.lastSeen=DEMO?now():null;
-  if (!DEMO) for(const field of ['pressureBar','tankLevelPct','flowM3h','turbidityNtu','chlorineMgL']) s[field]=null;
-  if (!DEMO) s.online=false;
+  s.hasTelemetry = DEMO;
+  s.lastSeen = DEMO ? now() : null;
+  s.rawTelemetry = null;
+  s.simulationOverlay = null;
+  s.isSimulated = false;
+  s.hasSimulatedLabIncident = false;
+  s.origin = DEMO ? 'DEMO' : 'NONE';
+  if (!DEMO) for (const field of ['pressureBar', 'tankLevelPct', 'flowM3h', 'turbidityNtu', 'chlorineMgL']) s[field] = null;
+  if (!DEMO) s.online = false;
 }
 const history = Array.from({length:96},(_,i)=>({
   time: new Date(Date.now()-(95-i)*15*60_000).toISOString(),
@@ -132,7 +148,7 @@ const history = Array.from({length:96},(_,i)=>({
   tank: num(72+Math.sin(i*.11)*6+Math.random()*1.8,1)
 }));
 if (!DEMO) history.length=0;
-let store = {alerts:[], queue:[], active:{}, stationTelemetry:{}, seenPackets:{}, updatedAt:now()};
+let store = {alerts:[], queue:[], active:{}, stationTelemetry:{}, simulationOverlays:{}, seenPackets:{}, updatedAt:now()};
 try {
   const previous=JSON.parse(fs.readFileSync(DATA_PATH,'utf8'));
   store={
@@ -141,6 +157,7 @@ try {
     queue:previous.queue||[],
     active:previous.active||{},
     stationTelemetry:previous.stationTelemetry||{},
+    simulationOverlays:previous.simulationOverlays||{},
     seenPackets:previous.seenPackets||{}
   };
   // Restore persisted station telemetry across restarts
@@ -148,8 +165,27 @@ try {
     for (const [sid, tel] of Object.entries(store.stationTelemetry)) {
       const st = stations.find(x => x.id === sid);
       if (st && tel) {
+        st.rawTelemetry = { ...tel };
         Object.assign(st, tel);
         st.hasTelemetry = true;
+        st.origin = tel.origin || 'GATEWAY_INGEST';
+      }
+    }
+  }
+  // Restore simulation overlays if present
+  if (store.simulationOverlays) {
+    for (const [sid, overlay] of Object.entries(store.simulationOverlays)) {
+      const st = stations.find(x => x.id === sid);
+      if (st && overlay) {
+        st.simulationOverlay = { ...overlay };
+        st.isSimulated = true;
+        st.hasSimulatedLabIncident = true;
+        st.origin = 'ADMIN_SIMULATION';
+        for (const [k, v] of Object.entries(overlay)) {
+          if (k !== 'origin' && k !== 'type' && k !== 'updatedAt') {
+            st[k] = v;
+          }
+        }
       }
     }
   }
@@ -158,14 +194,74 @@ catch (e) {if (e.code!=='ENOENT') console.error('Could not read state:',e.messag
 let saveTimer;
 function saveSoon() {clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,400); setImmediate(processQueue);}
 function saveNow() {try {let temp=DATA_PATH+'.tmp';fs.writeFileSync(temp,JSON.stringify(store));fs.renameSync(temp,DATA_PATH);}catch(e){console.error('State persistence error:',e.message);}}
-function statusOf(s) {if (!s.hasTelemetry) return 'unknown';const a=evaluateTelemetry(s);return a.some(x=>x.severity==='critical')?'critical':a.some(x=>x.severity==='warning')?'warning':'normal';}
+
+function getEffectiveStation(s) {
+  const overlay = store.simulationOverlays?.[s.id] || null;
+  const raw = s.rawTelemetry || null;
+  const effective = { ...s };
+
+  if (raw) {
+    Object.assign(effective, raw);
+    effective.hasTelemetry = true;
+  }
+
+  if (overlay) {
+    for (const [k, v] of Object.entries(overlay)) {
+      if (k !== 'origin' && k !== 'type' && k !== 'updatedAt') {
+        effective[k] = v;
+      }
+    }
+    effective.isSimulated = true;
+    effective.hasSimulatedLabIncident = true;
+    effective.hasTelemetry = true;
+    effective.simulationOverlay = overlay;
+    effective.origin = overlay.origin || 'ADMIN_SIMULATION';
+  } else if (raw) {
+    effective.isSimulated = false;
+    effective.hasSimulatedLabIncident = false;
+    effective.simulationOverlay = null;
+    effective.origin = raw.origin || 'GATEWAY_INGEST';
+  } else {
+    effective.isSimulated = false;
+    effective.hasSimulatedLabIncident = false;
+    effective.simulationOverlay = null;
+    effective.origin = DEMO ? 'DEMO' : 'NONE';
+  }
+
+  effective.rawTelemetry = raw;
+  return effective;
+}
+
+function statusOf(s) {
+  const eff = getEffectiveStation(s);
+  if (!eff.hasTelemetry) return 'unknown';
+  const a = evaluateTelemetry(eff);
+  return a.some(x=>x.severity==='critical')?'critical':a.some(x=>x.severity==='warning')?'warning':'normal';
+}
+
 function snapshot() {
-  const details=stations.map(s=>({
-    ...s,
-    status:statusOf(s),
-    dataClassification: s.hasTelemetry ? (s.dataClassification || (DEMO ? 'DEMO' : 'SIMULATED_LAB')) : (DEMO ? 'DEMO' : 'NO_DATA'),
-    scopeStatus: s.scopeStatus || (s.pwaBranchCode === '1004' ? 'AUTHORIZED_PILOT' : 'OUT_OF_PILOT_SCOPE')
-  }));
+  const details=stations.map(s => {
+    const eff = getEffectiveStation(s);
+    return {
+      ...eff,
+      status: statusOf(s),
+      dataClassification: eff.hasTelemetry ? (eff.dataClassification || (DEMO ? 'DEMO' : 'SIMULATED_LAB')) : (DEMO ? 'DEMO' : 'NO_DATA'),
+      scopeStatus: eff.scopeStatus || (eff.pwaBranchCode === '1004' ? 'AUTHORIZED_PILOT' : 'OUT_OF_PILOT_SCOPE'),
+      gatewayTelemetry: s.rawTelemetry ? {
+        pressureBar: s.rawTelemetry.pressureBar,
+        tankLevelPct: s.rawTelemetry.tankLevelPct,
+        flowM3h: s.rawTelemetry.flowM3h,
+        turbidityNtu: s.rawTelemetry.turbidityNtu,
+        chlorineMgL: s.rawTelemetry.chlorineMgL,
+        online: s.rawTelemetry.online,
+        lastSeen: s.rawTelemetry.lastSeen,
+        sourceTimestamp: s.rawTelemetry.sourceTimestamp,
+        sequenceNumber: s.rawTelemetry.sequenceNumber,
+        collectorId: s.rawTelemetry.collectorId,
+        origin: s.rawTelemetry.origin || 'GATEWAY_INGEST'
+      } : null
+    };
+  });
   const valid=details.filter(s=>s.hasTelemetry);
   const mean=field=>{const values=valid.map(s=>s[field]).filter(v=>typeof v==='number');return values.length?values.reduce((a,b)=>a+b,0)/values.length:0;};
   const alertCounts={critical:store.alerts.filter(a=>a.severity==='critical'&&!a.resolvedAt&&!a.supersededAt).length,warning:store.alerts.filter(a=>a.severity==='warning'&&!a.resolvedAt&&!a.supersededAt).length};
@@ -177,7 +273,7 @@ function snapshot() {
     env:APP_ENV,
     mode:DEMO?'demo':'live-ingest',
     simulation:{
-      enabled:APP_ENV!=='production',
+      enabled:IS_SIMULATION_ALLOWED,
       mode:APP_ENV==='lab'?'lab_admin':(DEMO?'demo':'disabled')
     },
     stations:details,
@@ -187,8 +283,8 @@ function snapshot() {
     queueStats:{
       pending:store.queue.filter(x=>x.status==='pending').length,
       failed:store.queue.filter(x=>x.status==='failed').length,
-      sent:store.queue.filter(x=>x.status==='sent').length,
-      mockSent:store.queue.filter(x=>x.status==='sent'&&x.mock).length
+      sent:store.queue.filter(x=>x.status==='sent'&&!x.mock).length,
+      mockSent:store.queue.filter(x=>x.status==='sent'&&Boolean(x.mock)).length
     },
     queueRecent:store.queue.slice(-8).reverse().map(j=>({
       id:j.id,
@@ -231,41 +327,59 @@ function snapshot() {
 const clients = new Set();
 function broadcast() {const message=`data: ${JSON.stringify(snapshot())}\n\n`;for(const c of clients) try{c.write(message);}catch{clients.delete(c);}}
 const uid=()=>crypto.randomUUID().slice(0,8).toUpperCase();
-function createAlert(station,rule,severity,value,{resolved=false,demo=DEMO,dataClassification=null}={}) {
-  const isDemo = Boolean(demo || station.hasSimulatedLabIncident);
+function createAlert(station,rule,severity,value,{resolved=false,demo=DEMO,dataClassification=null,origin=null}={}) {
+  const isDemo = origin === 'ADMIN_SIMULATION' || Boolean(demo || station.hasSimulatedLabIncident);
+  const resolvedOrigin = origin || (isDemo ? 'ADMIN_SIMULATION' : 'GATEWAY_INGEST');
   const classification = dataClassification || station.dataClassification || (isDemo ? 'SIMULATED_LAB' : 'AUTHORIZED_FIELD_TELEMETRY');
   const message=resolved?`${rule.title} กลับสู่เกณฑ์ที่กำหนด (${value}${rule.unit})` :
     `${rule.title}: ${value}${rule.unit} / เกณฑ์เตือน ${rule.warning}${rule.unit}, วิกฤต ${rule.critical}${rule.unit}`;
-  const alert={id:`AL-${uid()}`,stationId:station.id,stationName:station.name,region:station.region,title:resolved?`${rule.title} — กลับสู่ปกติ`:rule.title,severity:resolved?'resolved':severity,message,value,ruleId:rule.id,createdAt:now(),resolvedAt:resolved?now():null,acknowledgedAt:null,demo:isDemo,dataClassification:classification};
+  const alert={
+    id:`AL-${uid()}`,
+    stationId:station.id,
+    stationName:station.name,
+    region:station.region,
+    title:resolved?`${rule.title} — กลับสู่ปกติ`:rule.title,
+    severity:resolved?'resolved':severity,
+    message,
+    value,
+    ruleId:rule.id,
+    createdAt:now(),
+    resolvedAt:resolved?now():null,
+    acknowledgedAt:null,
+    demo:isDemo,
+    dataClassification:classification,
+    origin:resolvedOrigin
+  };
   store.alerts.unshift(alert);store.alerts=store.alerts.slice(0,400);
 
   if(BOT&&CHAT&&(!isDemo||SEND_DEMO)) {
     store.queue.push({id:uid(),alertId:alert.id,status:'pending',mode:'real',mock:false,attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null});
-  } else if((isDemo || APP_ENV === 'lab') && (!BOT || !CHAT)) {
+  } else if((isDemo || APP_ENV === 'lab' || APP_ENV === 'demo') && (!BOT || !CHAT)) {
     store.queue.push({id:uid(),alertId:alert.id,status:'pending',mode:'mock',mock:true,attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null,mockNotice:'MOCK / NOT ACTUALLY SENT'});
   }
   saveSoon();broadcast();return alert;
 }
-function processRules(station,{demo=DEMO,dataClassification=null,initial=false}={}) {
-  const isSimulated = Boolean(demo || station.hasSimulatedLabIncident);
+function processRules(station,{demo=DEMO,dataClassification=null,initial=false,origin=null}={}) {
+  const isSimulated = origin === 'ADMIN_SIMULATION' || Boolean(demo || station.hasSimulatedLabIncident);
   const classification = dataClassification || station.dataClassification || (isSimulated ? 'SIMULATED_LAB' : 'AUTHORIZED_FIELD_TELEMETRY');
+  const effectiveOrigin = origin || (isSimulated ? 'ADMIN_SIMULATION' : 'GATEWAY_INGEST');
   for(const rule of RULES) {
     const current=severityOf(rule,station[rule.field]);const key=station.id+':'+rule.id;
     const prev=store.active[key]||null;
     if(current===prev?.severity) {
-      if(current && !initial && Date.now()-(prev.lastNotice||0)>REMINDER_MS) {for(const a of store.alerts)if(a.stationId===station.id&&a.ruleId===rule.id&&!a.resolvedAt&&!a.supersededAt)a.supersededAt=now();createAlert(station,rule,current,station[rule.field],{demo:isSimulated,dataClassification:classification});store.active[key]={severity:current,lastNotice:Date.now()};}
+      if(current && !initial && Date.now()-(prev.lastNotice||0)>REMINDER_MS) {for(const a of store.alerts)if(a.stationId===station.id&&a.ruleId===rule.id&&!a.resolvedAt&&!a.supersededAt)a.supersededAt=now();createAlert(station,rule,current,station[rule.field],{demo:isSimulated,dataClassification:classification,origin:effectiveOrigin});store.active[key]={severity:current,lastNotice:Date.now(),origin:effectiveOrigin};}
       continue;
     }
     if (current) {
       if(prev)for(const a of store.alerts)if(a.stationId===station.id&&a.ruleId===rule.id&&!a.resolvedAt&&!a.supersededAt)a.supersededAt=now();
-      if(!initial)createAlert(station,rule,current,station[rule.field],{demo:isSimulated,dataClassification:classification});
-      store.active[key]={severity:current,lastNotice:Date.now()};
+      if(!initial)createAlert(station,rule,current,station[rule.field],{demo:isSimulated,dataClassification:classification,origin:effectiveOrigin});
+      store.active[key]={severity:current,lastNotice:Date.now(),origin:effectiveOrigin};
     } else {
-      if(prev && !initial)createAlert(station,rule,'resolved',station[rule.field],{resolved:true,demo:isSimulated,dataClassification:classification});
+      if(prev && !initial)createAlert(station,rule,'resolved',station[rule.field],{resolved:true,demo:isSimulated,dataClassification:classification,origin:effectiveOrigin});
       delete store.active[key];
     }
     if(prev && current===null) {
-      for(const a of store.alerts) if(a.stationId===station.id && a.ruleId===rule.id && !a.resolvedAt && a.severity!=='resolved') a.resolvedAt=now();
+      for(const a of store.alerts) if(a.stationId===station.id && a.ruleId===rule.id && !a.resolvedAt && a.severity!=='resolved' && a.origin===effectiveOrigin) a.resolvedAt=now();
     }
   }
   saveSoon();
@@ -273,7 +387,7 @@ function processRules(station,{demo=DEMO,dataClassification=null,initial=false}=
 function seedAlerts(){
   if (!DEMO || store.alerts.length) return;
   for(const s of stations)for(const {rule,severity,value} of evaluateTelemetry(s)){
-    createAlert(s,rule,severity,value,{demo:true,dataClassification:'SIMULATED_LAB'});store.active[s.id+':'+rule.id]={severity,lastNotice:Date.now()};
+    createAlert(s,rule,severity,value,{demo:true,dataClassification:'SIMULATED_LAB',origin:'DEMO'});store.active[s.id+':'+rule.id]={severity,lastNotice:Date.now(),origin:'DEMO'};
   }
   saveNow();
 }
@@ -301,8 +415,11 @@ async function processQueue() {
     return;
   }
 
-  const targetBot = job.useTestBot ? (TEST_BOT || BOT) : BOT;
-  const targetChat = job.useTestBot ? (TEST_CHAT || CHAT) : CHAT;
+  let targetBot = job.useTestBot ? TEST_BOT : BOT;
+  let targetChat = job.useTestBot ? TEST_CHAT : CHAT;
+  if(job.useTestBot && (!TEST_BOT || !TEST_CHAT)) {
+    job.status='failed';job.lastError='Telegram test bot or chat not configured; production fallback forbidden';sending=false;saveSoon();broadcast();return;
+  }
   if(!targetBot || !targetChat) {
     job.status='failed';job.lastError='Telegram bot or chat not configured';sending=false;saveSoon();broadcast();return;
   }
@@ -317,7 +434,17 @@ async function processQueue() {
 }
 setInterval(processQueue,950).unref();
 // A silent station cannot send online=false itself. Detect stale telemetry centrally.
-if(!DEMO) setInterval(()=>{for(const s of stations)if(s.hasTelemetry && s.online && Date.now()-new Date(s.lastSeen).getTime()>STALE_AFTER_MS){s.online=false;const isSim=s.dataClassification==='SIMULATED_LAB'||Boolean(s.hasSimulatedLabIncident);processRules(s,{demo:isSim,dataClassification:s.dataClassification});broadcast();}},10_000).unref();
+if(!DEMO) setInterval(()=>{
+  for(const s of stations) {
+    if(s.hasTelemetry && s.online && s.lastSeen && Date.now()-new Date(s.lastSeen).getTime()>STALE_AFTER_MS) {
+      s.online=false;
+      if (s.rawTelemetry) s.rawTelemetry.online=false;
+      const isSim=s.dataClassification==='SIMULATED_LAB'||Boolean(s.hasSimulatedLabIncident);
+      processRules(s,{demo:isSim,dataClassification:s.dataClassification,origin:s.origin||(isSim?'ADMIN_SIMULATION':'GATEWAY_INGEST')});
+      broadcast();
+    }
+  }
+},10_000).unref();
 if(DEMO) setInterval(()=>{
   const i=Math.floor(Math.random()*stations.length),s=stations[i];
   s.pressureBar=num(Math.max(0,Math.min(6,s.pressureBar+(Math.random()-.5)*.065)),2);
@@ -565,7 +692,7 @@ async function handler(req, res) {
       role,
       requireAuth: REQUIRE_AUTH_FOR_READ,
       env: APP_ENV,
-      simulationEnabled: APP_ENV !== 'production',
+      simulationEnabled: IS_SIMULATION_ALLOWED,
       telegramMode: Boolean(BOT && CHAT) ? 'real' : 'mock'
     });
   }
@@ -592,7 +719,7 @@ async function handler(req, res) {
     env: APP_ENV,
     telegramConfigured: Boolean(BOT && CHAT),
     telegramMode: Boolean(BOT && CHAT) ? 'real' : 'mock',
-    simulationEnabled: APP_ENV !== 'production',
+    simulationEnabled: IS_SIMULATION_ALLOWED,
     authEnforced: REQUIRE_AUTH_FOR_READ,
     uptimeSeconds: Math.round(process.uptime())
   });
@@ -717,38 +844,50 @@ async function handler(req, res) {
     const isOlderThanServerNow = incomingTime < (Date.now() - 30000);
     const isHistoricalReplay = isOlderThanLastSeen || isOlderThanServerNow;
 
-    s.dataClassification=enforcedClassification;
-    s.collectorId=b.collectorId;
-    s.sequenceNumber=b.sequenceNumber||s.sequenceNumber||0;
-    s.sourceTimestamp=b.sourceTimestamp;
-    s.quality=overallQuality;
-    s.hasTelemetry=true;
-
     if(!isHistoricalReplay){
+      s.dataClassification=enforcedClassification;
+      s.collectorId=b.collectorId;
+      s.sequenceNumber=b.sequenceNumber||s.sequenceNumber||0;
+      s.sourceTimestamp=b.sourceTimestamp;
+      s.lastSeen=now();
+      s.quality=overallQuality;
+      s.hasTelemetry=true;
+
+      // Track pure raw telemetry
+      s.rawTelemetry = s.rawTelemetry || {};
+      s.rawTelemetry.dataClassification = enforcedClassification;
+      s.rawTelemetry.collectorId = b.collectorId;
+      s.rawTelemetry.sequenceNumber = b.sequenceNumber || s.rawTelemetry.sequenceNumber || 0;
+      s.rawTelemetry.sourceTimestamp = b.sourceTimestamp;
+      s.rawTelemetry.lastSeen = now();
+      s.rawTelemetry.quality = overallQuality;
+      s.rawTelemetry.online = overallQuality === 'GOOD';
+      s.rawTelemetry.origin = 'GATEWAY_INGEST';
       for(const [fld,val] of Object.entries(pointValues)) {
-        s[fld]=val;
+        s.rawTelemetry[fld] = val;
       }
-      s.online=overallQuality==='GOOD';
-      processRules(s, { demo: DEMO, dataClassification: s.dataClassification });
-      const avg=field=>{const a=stations.map(x=>x[field]).filter(v=>typeof v==='number');return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;};
-      history.push({time:b.sourceTimestamp,pressure:num(avg('pressureBar'),2),flow:num(stations.reduce((a,x)=>a+(x.flowM3h||0),0)/1000,2),tank:num(avg('tankLevelPct'),1)});
-      if(history.length>96) history.shift();
 
       // Persist durable station telemetry across restarts
       store.stationTelemetry = store.stationTelemetry || {};
-      store.stationTelemetry[s.id] = {
-        pressureBar: s.pressureBar,
-        tankLevelPct: s.tankLevelPct,
-        flowM3h: s.flowM3h,
-        turbidityNtu: s.turbidityNtu,
-        chlorineMgL: s.chlorineMgL,
-        lastSeen: s.lastSeen,
-        sequenceNumber: s.sequenceNumber,
-        collectorId: s.collectorId,
-        dataClassification: s.dataClassification,
-        quality: s.quality,
-        online: s.online
-      };
+      store.stationTelemetry[s.id] = { ...s.rawTelemetry };
+
+      const overlayActive = Boolean(store.simulationOverlays && store.simulationOverlays[s.id]);
+
+      // Historical measurements recorded strictly from pure raw gateway telemetry (NEVER polluted by simulation overlays)
+      const avg=field=>{const a=stations.map(x=>x.rawTelemetry?.[field]).filter(v=>typeof v==='number');return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;};
+      history.push({time:b.sourceTimestamp,pressure:num(avg('pressureBar'),2),flow:num(stations.reduce((a,x)=>a+(x.rawTelemetry?.flowM3h||0),0)/1000,2),tank:num(avg('tankLevelPct'),1)});
+      if(history.length>96) history.shift();
+
+      if(!overlayActive){
+        // No simulation overlay active: update station directly and evaluate gateway rules
+        Object.assign(s, s.rawTelemetry);
+        s.hasTelemetry = true;
+        s.origin = 'GATEWAY_INGEST';
+        processRules(s, { demo: DEMO, dataClassification: s.dataClassification, origin: 'GATEWAY_INGEST' });
+      } else {
+        // Overlay active: keep station simulated overlay in foreground, raw telemetry saved in background
+        s.hasTelemetry = true;
+      }
       saveSoon();
     }
     broadcast();
@@ -756,7 +895,7 @@ async function handler(req, res) {
       ok:true,
       stationId:s.id,
       status:statusOf(s),
-      dataClassification:s.dataClassification,
+      dataClassification:enforcedClassification,
       isHistoricalReplay,
       sequenceNumber:b.sequenceNumber
     });
@@ -794,7 +933,8 @@ async function handler(req, res) {
       createdAt: b.createdAt || now(),
       resolvedAt: b.resolvedAt || null,
       acknowledgedAt: null,
-      demo: Boolean(b.demo)
+      demo: Boolean(b.demo),
+      origin: 'ADMIN_MANUAL'
     };
     store.alerts.unshift(alert);
     store.alerts = store.alerts.slice(0, 400);
@@ -803,7 +943,7 @@ async function handler(req, res) {
     return reply(res, 200, {ok: true, alertId: alert.id});
   }
   if(req.method==='POST'&&p==='/api/demo/incident'){
-    if(APP_ENV === 'production') return reply(res, 403, {error: 'Simulation disabled in production environment'});
+    if(!IS_SIMULATION_ALLOWED) return reply(res, 403, {error: `Simulation disabled in ${APP_ENV} environment`});
     if(!checkKey(req)) return reply(res, 403, {error: 'Admin authorization required for simulation'});
     const b=await body(req);
     if(b.stationId && !safeId(b.stationId)) return reply(res, 422, {error: 'Invalid stationId'});
@@ -818,37 +958,85 @@ async function handler(req, res) {
       if(preset.value<lo||preset.value>hi) return reply(res,422,{error:'Simulation value out of bounds'});
     }
 
+    // Set simulation overlay WITHOUT touching s.rawTelemetry
+    store.simulationOverlays = store.simulationOverlays || {};
+    store.simulationOverlays[s.id] = {
+      ...(store.simulationOverlays[s.id] || {}),
+      [preset.field]: preset.value,
+      type: b.type || 'pressure-low',
+      origin: 'ADMIN_SIMULATION',
+      updatedAt: now()
+    };
+
     s[preset.field]=preset.value;
     s.dataClassification='SIMULATED_LAB';
     s.hasSimulatedLabIncident=true;
+    s.isSimulated=true;
+    s.origin='ADMIN_SIMULATION';
     s.lastSeen=now();
     s.hasTelemetry=true;
-    processRules(s,{demo:true,dataClassification:'SIMULATED_LAB'});
-
-    const avg=field=>{const a=stations.map(x=>x[field]).filter(v=>typeof v==='number');return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;};
-    history.push({time:now(),pressure:num(avg('pressureBar'),2),flow:num(stations.reduce((a,x)=>a+(x.flowM3h||0),0)/1000,2),tank:num(avg('tankLevelPct'),1)});
-    if(history.length>96) history.shift();
-
+    processRules(s,{demo:true,dataClassification:'SIMULATED_LAB',origin:'ADMIN_SIMULATION'});
+    saveSoon();
     broadcast();
-    return reply(res,200,{ok:true,stationId:s.id,type:b.type,status:statusOf(s),dataClassification:'SIMULATED_LAB',demo:true});
+    return reply(res,200,{ok:true,stationId:s.id,type:b.type,status:statusOf(s),dataClassification:'SIMULATED_LAB',origin:'ADMIN_SIMULATION',demo:true});
   }
   if(req.method==='POST'&&p==='/api/demo/reset'){
-    if(APP_ENV === 'production') return reply(res, 403, {error: 'Simulation reset disabled in production environment'});
+    if(!IS_SIMULATION_ALLOWED) return reply(res, 403, {error: `Simulation reset disabled in ${APP_ENV} environment`});
     if(!checkKey(req)) return reply(res, 403, {error: 'Admin authorization required for simulation reset'});
     let resetCount=0;
+    store.simulationOverlays = store.simulationOverlays || {};
     for(const s of stations){
-      if(s.hasSimulatedLabIncident || (DEMO && !s.hasTelemetry)){
-        s.pressureBar=2.65;s.tankLevelPct=75;s.turbidityNtu=.45;s.chlorineMgL=.52;s.online=true;
+      const hadOverlay = Boolean(store.simulationOverlays[s.id]) || Boolean(s.hasSimulatedLabIncident);
+      if(hadOverlay || (DEMO && !s.hasTelemetry)){
+        delete store.simulationOverlays[s.id];
         s.hasSimulatedLabIncident=false;
-        processRules(s,{demo:true,dataClassification:'SIMULATED_LAB'});
+        s.isSimulated=false;
+        s.simulationOverlay=null;
+
+        if (s.rawTelemetry) {
+          // Restore latest raw gateway telemetry
+          Object.assign(s, s.rawTelemetry);
+          s.origin = s.rawTelemetry.origin || 'GATEWAY_INGEST';
+          s.dataClassification = s.rawTelemetry.dataClassification || 'SIMULATED_LAB';
+        } else if (DEMO) {
+          s.pressureBar=2.65;s.tankLevelPct=75;s.turbidityNtu=.45;s.chlorineMgL=.52;s.online=true;
+          s.origin = 'DEMO';
+        } else {
+          for (const f of ['pressureBar', 'tankLevelPct', 'flowM3h', 'turbidityNtu', 'chlorineMgL']) s[f] = null;
+          s.online = false;
+          s.hasTelemetry = false;
+          s.origin = 'NONE';
+        }
+
+        // Clean up active rule entries with origin ADMIN_SIMULATION for this station
+        for (const rule of RULES) {
+          const key = s.id + ':' + rule.id;
+          if (store.active[key]?.origin === 'ADMIN_SIMULATION') {
+            delete store.active[key];
+          }
+        }
+
+        if (s.hasTelemetry) {
+          processRules(s,{demo:DEMO,dataClassification:s.dataClassification,origin:s.origin});
+        }
         resetCount++;
       }
     }
+
+    // Clean up all active rule entries with origin ADMIN_SIMULATION
+    for (const key of Object.keys(store.active)) {
+      if (store.active[key]?.origin === 'ADMIN_SIMULATION') {
+        delete store.active[key];
+      }
+    }
+
+    // Resolve ONLY alerts that originated from ADMIN_SIMULATION
     for(const a of store.alerts){
-      if((a.demo || a.dataClassification==='SIMULATED_LAB') && !a.resolvedAt){
+      if(a.origin === 'ADMIN_SIMULATION' && !a.resolvedAt){
         a.resolvedAt=now();
       }
     }
+    saveSoon();
     broadcast();
     return reply(res,200,{ok:true,resetStations:resetCount});
   }
@@ -874,18 +1062,26 @@ async function handler(req, res) {
 
     if(mode === 'real') {
       if(!b.confirmRealSend) return reply(res, 400, {error: 'Confirmation required for real Telegram send (confirmRealSend: true)'});
-      const realBot=TEST_BOT || BOT;
-      const realChat=TEST_CHAT || CHAT;
-      if(!realBot || !realChat) return reply(res, 422, {error: 'Real Telegram credentials not configured. Use Mock Telegram mode.'});
-      const a={id:`TEST-${uid()}`,title:'ทดสอบการเชื่อมต่อ Telegram (REAL TEST)',severity:'info',stationName:'ศูนย์ควบคุม',region:'ทุกพื้นที่',message:'ข้อความทดสอบจาก AQUA COMMAND ส่งไปยังกลุ่มทดสอบเฉพาะ',createdAt:now(),demo:true,dataClassification:'SIMULATED_LAB'};
+      if (APP_ENV === 'lab' || APP_ENV === 'demo') {
+        if (!TEST_BOT || !TEST_CHAT) {
+          return reply(res, 422, {
+            error: 'Lab Real Telegram requires both TELEGRAM_TEST_BOT_TOKEN and TELEGRAM_TEST_CHAT_ID. Production Telegram fallback is strictly forbidden in Lab.'
+          });
+        }
+      } else {
+        if (!BOT || !CHAT) {
+          return reply(res, 422, { error: 'Real Telegram credentials not configured. Use Mock Telegram mode.' });
+        }
+      }
+      const a={id:`TEST-${uid()}`,title:'ทดสอบการเชื่อมต่อ Telegram (REAL TEST)',severity:'info',stationName:'ศูนย์ควบคุม',region:'ทุกพื้นที่',message:'ข้อความทดสอบจาก AQUA COMMAND ส่งไปยังกลุ่มทดสอบเฉพาะ',createdAt:now(),demo:true,dataClassification:'SIMULATED_LAB',origin:'ADMIN_SIMULATION'};
       store.alerts.unshift(a);
-      store.queue.push({id:uid(),alertId:a.id,status:'pending',mode:'real',useTestBot:Boolean(TEST_BOT&&TEST_CHAT),mock:false,attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null});
+      store.queue.push({id:uid(),alertId:a.id,status:'pending',mode:'real',useTestBot:true,mock:false,attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null});
       saveSoon();broadcast();return reply(res,202,{ok:true,queued:true,id:a.id,mode:'real'});
     }
 
     // MOCK TELEGRAM TEST
     const outcome=b.outcome || 'success';
-    const a={id:`TEST-${uid()}`,title:'ทดสอบระบบคิว Telegram (MOCK TEST)',severity:'info',stationName:'ศูนย์ควบคุม',region:'ทุกพื้นที่',message:'จำลองการส่งข้อความแจ้งเตือน (MOCK / NOT ACTUALLY SENT)',createdAt:now(),demo:true,dataClassification:'SIMULATED_LAB'};
+    const a={id:`TEST-${uid()}`,title:'ทดสอบระบบคิว Telegram (MOCK TEST)',severity:'info',stationName:'ศูนย์ควบคุม',region:'ทุกพื้นที่',message:'จำลองการส่งข้อความแจ้งเตือน (MOCK / NOT ACTUALLY SENT)',createdAt:now(),demo:true,dataClassification:'SIMULATED_LAB',origin:'ADMIN_SIMULATION'};
     store.alerts.unshift(a);
     store.queue.push({id:uid(),alertId:a.id,status:'pending',mode:'mock',mock:true,simulatedOutcome:outcome,attempt:0,nextAt:Date.now(),createdAt:now(),lastError:null,mockNotice:'MOCK / NOT ACTUALLY SENT'});
     saveSoon();broadcast();return reply(res,202,{ok:true,queued:true,id:a.id,mode:'mock',simulatedOutcome:outcome,notice:'MOCK / NOT ACTUALLY SENT (No external request made)'});

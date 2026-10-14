@@ -1200,6 +1200,13 @@ function drawer() {
           `).join('')}
         </div>
 
+        ${(s.hasSimulatedLabIncident || s.simulationOverlay) ? `
+          <div class="notice-box warning" style="margin-top:12px;font-size:12px;">
+            <strong>⚠️ กำลังแสดงผลข้อมูลจำลองเหตุการณ์ (ADMIN_SIMULATION OVERLAY)</strong>
+            ${s.gatewayTelemetry ? `<div style="margin-top:4px;color:var(--text-muted);">ข้อมูลเกตเวย์จริง: แรงดัน ${fmt(s.gatewayTelemetry.pressureBar, 2)} bar · ${s.gatewayTelemetry.online ? 'ONLINE' : 'OFFLINE'} (Seq: ${s.gatewayTelemetry.sequenceNumber})</div>` : ''}
+          </div>
+        ` : ''}
+
         <div class="drawer-section-title">ประวัติเหตุการณ์ของสถานีนี้</div>
         ${alerts.length ? alerts.map(alertRow).join('') : '<div class="notice-box success">ไม่มีประวัติเหตุการณ์ผิดปกติ</div>'}
 
@@ -1306,7 +1313,7 @@ async function runAction(name, extra) {
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.role === 'admin') {
           state.role = 'admin';
-          state.adminKey = key.trim();
+          state.adminKey = '';
           notify('ยืนยันสิทธิ์ Admin เรียบร้อยแล้ว');
           await refreshAuthStatus();
           render();
@@ -1596,6 +1603,7 @@ async function init() {
             if (res.ok) {
               const resData = await res.json().catch(() => ({}));
               if (resData.role) state.role = resData.role;
+              state.adminKey = '';
               await refreshAuthStatus();
               init();
             } else {
