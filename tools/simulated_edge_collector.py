@@ -42,6 +42,7 @@ def parse_args():
     parser.add_argument("--once", action="store_true", help="Transmit a single reading and exit")
     parser.add_argument("--fault", choices=["pressure-low", "turbidity-high", "tank-low", "sensor-bad"], help="Inject simulated anomaly for testing")
     parser.add_argument("--buffer-db", default="data/simulated_collector.db", help="Path to local SQLite buffer database")
+    parser.add_argument("--classification", default=os.getenv("DATA_CLASSIFICATION", "SIMULATED_LAB"), help="Telemetry classification (default: SIMULATED_LAB)")
     return parser.parse_args()
 
 
@@ -72,7 +73,8 @@ def main():
         station_id=args.station,
         collector_id=args.gateway_id,
         gateway_token=args.token,
-        buffer_db_path=args.buffer_db
+        buffer_db_path=args.buffer_db,
+        data_classification=args.classification
     )
 
     if args.once:

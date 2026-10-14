@@ -1,8 +1,8 @@
 """Autonomous Edge Collector Agent for Zone A (Station/OT Boundary).
 
-Reads field points, attaches source timestamps and quality flags,
-maintains sequence numbers, manages local buffer during network drops,
-and securely transmits telemetry to Zone B Ingestion API.
+Reads field points, attaches source timestamps, sequence numbers, and epoch IDs,
+manages local bounded buffer during network drops, and securely transmits telemetry
+to Zone B Ingestion API via HTTP headers only.
 """
 
 from datetime import datetime, timezone
@@ -27,21 +27,23 @@ class EdgeCollectorAgent:
         station_id: str = "CM-01",
         collector_id: str = "GW-CM01-PATAN",
         gateway_token: str = "",
-        buffer_db_path: str = "data/collector_buffer.db"
+        buffer_db_path: str = "data/collector_buffer.db",
+        data_classification: str = "SIMULATED_LAB"
     ):
         self.adapter = adapter
         self.ingest_url = ingest_url.rstrip("/")
         self.station_id = station_id
         self.collector_id = collector_id
         self.gateway_token = gateway_token
+        self.data_classification = data_classification
         self.buffer = CollectorBuffer(buffer_db_path)
-        self._sequence_number = 0
+        self._epoch = self.buffer.get_epoch()
         self._last_send_success = False
 
     def build_telemetry_packet(self) -> dict[str, Any]:
         """Reads adapter points and constructs standardized telemetry payload."""
         raw_points = self.adapter.read_all_points()
-        self._sequence_number += 1
+        seq = self.buffer.get_next_sequence_number()
         now_iso = datetime.now(timezone.utc).isoformat()
 
         # Format points schema
@@ -56,19 +58,20 @@ class EdgeCollectorAgent:
         return {
             "stationId": self.station_id,
             "collectorId": self.collector_id,
-            "sequenceNumber": self._sequence_number,
+            "epoch": self._epoch,
+            "sequenceNumber": seq,
             "sourceTimestamp": now_iso,
-            "dataClassification": "AUTHORIZED_FIELD_TELEMETRY",
+            "dataClassification": self.data_classification,
             "points": points_payload
         }
 
     def _post_packet(self, packet: dict[str, Any], timeout: float = 5.0) -> tuple[bool, int, str]:
-        """Transmits a single telemetry packet to Zone B with gateway authentication."""
+        """Transmits a single telemetry packet to Zone B via secure HTTP headers only."""
         headers = {
             "Content-Type": "application/json",
             "X-Gateway-ID": self.collector_id,
             "X-Gateway-Token": self.gateway_token,
-            "X-API-Key": self.gateway_token,  # Fallback compatibility
+            "Authorization": f"Bearer {self.gateway_token}",
             "User-Agent": f"ZoneA-EdgeCollector/{self.collector_id}"
         }
         data = json.dumps(packet).encode("utf-8")
@@ -112,7 +115,7 @@ class EdgeCollectorAgent:
         1. If buffer has items, tries to flush.
         2. Reads fresh points from field adapter.
         3. Attempts delivery to Zone B.
-        4. If delivery fails, saves to buffer.
+        4. If delivery fails, saves to bounded buffer.
         """
         # Step 1: Replay buffered records if any
         if self.buffer.pending_count() > 0:

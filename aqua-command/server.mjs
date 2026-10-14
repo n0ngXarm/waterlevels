@@ -53,8 +53,14 @@ let reservoirs = [
 ];
 
 // Load Station Registry from config if available (Priority 1 Data Integrity)
-const REGISTRY_PATH = path.resolve(ROOT, '..', 'config', 'station_registry.json');
-if (fs.existsSync(REGISTRY_PATH)) {
+const candidatePaths = [
+  process.env.STATION_REGISTRY_PATH,
+  path.resolve(ROOT, 'config', 'station_registry.json'),
+  path.resolve(ROOT, '..', 'config', 'station_registry.json')
+].filter(Boolean);
+const REGISTRY_PATH = candidatePaths.find(p => fs.existsSync(p)) || '';
+let authorizedGateways = [];
+if (REGISTRY_PATH) {
   try {
     const reg = JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf8'));
     if (Array.isArray(reg.stations) && reg.stations.length > 0) {
@@ -79,6 +85,9 @@ if (fs.existsSync(REGISTRY_PATH)) {
         };
       });
     }
+    if (Array.isArray(reg.authorized_gateways)) {
+      authorizedGateways = reg.authorized_gateways;
+    }
   } catch (err) {
     console.error('Warning: could not parse station_registry.json:', err.message);
   }
@@ -96,8 +105,28 @@ const history = Array.from({length:96},(_,i)=>({
   tank: num(72+Math.sin(i*.11)*6+Math.random()*1.8,1)
 }));
 if (!DEMO) history.length=0;
-let store = {alerts:[], queue:[], active:{}, updatedAt:now()};
-try { const previous=JSON.parse(fs.readFileSync(DATA_PATH,'utf8')); store={...store, alerts:previous.alerts||[],queue:previous.queue||[],active:previous.active||{}}; }
+let store = {alerts:[], queue:[], active:{}, stationTelemetry:{}, seenPackets:{}, updatedAt:now()};
+try {
+  const previous=JSON.parse(fs.readFileSync(DATA_PATH,'utf8'));
+  store={
+    ...store,
+    alerts:previous.alerts||[],
+    queue:previous.queue||[],
+    active:previous.active||{},
+    stationTelemetry:previous.stationTelemetry||{},
+    seenPackets:previous.seenPackets||{}
+  };
+  // Restore persisted station telemetry across restarts
+  if (store.stationTelemetry) {
+    for (const [sid, tel] of Object.entries(store.stationTelemetry)) {
+      const st = stations.find(x => x.id === sid);
+      if (st && tel) {
+        Object.assign(st, tel);
+        st.hasTelemetry = true;
+      }
+    }
+  }
+}
 catch (e) {if (e.code!=='ENOENT') console.error('Could not read state:',e.message);}
 let saveTimer;
 function saveSoon() {clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,400);}
@@ -107,7 +136,7 @@ function snapshot() {
   const details=stations.map(s=>({
     ...s,
     status:statusOf(s),
-    dataClassification: s.hasTelemetry ? (s.dataClassification || (DEMO ? 'DEMO' : 'AUTHORIZED_FIELD_TELEMETRY')) : (DEMO ? 'DEMO' : 'NO_DATA'),
+    dataClassification: s.hasTelemetry ? (s.dataClassification || (DEMO ? 'DEMO' : 'SIMULATED_LAB')) : (DEMO ? 'DEMO' : 'NO_DATA'),
     scopeStatus: s.scopeStatus || (s.pwaBranchCode === '1004' ? 'AUTHORIZED_PILOT' : 'OUT_OF_PILOT_SCOPE')
   }));
   const valid=details.filter(s=>s.hasTelemetry);
@@ -217,14 +246,11 @@ if(DEMO) setInterval(()=>{
 },7500).unref();
 const contentTypes={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json; charset=utf-8','.ico':'image/x-icon'};
 function reply(res,code,payload){res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(payload));}
-function extractToken(req, url) {
+function extractToken(req) {
   const h = req.headers['x-api-key'] || req.headers['authorization'];
   if (h) {
     if (h.startsWith('Bearer ')) return h.slice(7).trim();
     return h.trim();
-  }
-  if (url && url.searchParams && url.searchParams.has('token')) {
-    return url.searchParams.get('token');
   }
   return null;
 }
@@ -236,6 +262,7 @@ function checkKey(req){
 function checkGatewayKey(req){
   const token = req.headers['x-gateway-token'] || extractToken(req);
   if(!token) return false;
+  // Gateway key or Admin key allowed for ingestion; VIEWER KEY IS STRICTLY FORBIDDEN
   const validKeys = [GATEWAY_KEY, SECRET].filter(k => k && k.length >= 24);
   for(const k of validKeys){
     if(token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k))){
@@ -244,12 +271,13 @@ function checkGatewayKey(req){
   }
   return false;
 }
-function checkReadKey(req, url){
+function checkReadKey(req){
   if(!REQUIRE_AUTH_FOR_READ) return true;
   if(DEMO && isLoopback(req)) return true;
-  const token = extractToken(req, url);
+  const token = extractToken(req);
   if(!token) return false;
-  const validKeys = [SECRET, VIEWER_KEY, GATEWAY_KEY].filter(k => k && k.length >= 24);
+  // Viewer key or Admin key allowed for read-only; GATEWAY KEY IS STRICTLY FORBIDDEN
+  const validKeys = [VIEWER_KEY, SECRET].filter(k => k && k.length >= 24);
   for(const k of validKeys){
     if(token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k))){
       return true;
@@ -263,11 +291,11 @@ async function handler(req,res){
   const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);const p=url.pathname;
   if(req.method==='GET'&&p==='/api/health')return reply(res,200,{ok:true,mode:DEMO?'demo':'live-ingest',telegramConfigured:Boolean(BOT&&CHAT),authEnforced:REQUIRE_AUTH_FOR_READ,uptimeSeconds:Math.round(process.uptime())});
   if(req.method==='GET'&&p==='/api/state'){
-    if(!checkReadKey(req,url)) return reply(res,401,{error:'Authentication required to access state'});
+    if(!checkReadKey(req)) return reply(res,401,{error:'Authentication required to access state'});
     return reply(res,200,snapshot());
   }
   if(req.method==='GET'&&p==='/api/stream'){
-    if(!checkReadKey(req,url)) return reply(res,401,{error:'Authentication required to access stream'});
+    if(!checkReadKey(req)) return reply(res,401,{error:'Authentication required to access stream'});
     res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no','X-Content-Type-Options':'nosniff'});
     clients.add(res);res.write(`retry: 3000\ndata: ${JSON.stringify(snapshot())}\n\n`);const interval=setInterval(()=>res.write(': ping\n\n'),20000);req.on('close',()=>{clearInterval(interval);clients.delete(res);});return;
   }
@@ -288,6 +316,35 @@ async function handler(req,res){
     const s=stations.find(x=>x.id===b.stationId);
     if(!s) return reply(res,404,{error:`Unknown station ID: ${b.stationId}`});
 
+    // 1. Server-enforced Source Classification (Reject unverified client claims)
+    const gwReg = authorizedGateways.find(g => g.gateway_id === b.collectorId);
+    let enforcedClassification = 'SIMULATED_LAB';
+    if (gwReg && gwReg.enforced_classification) {
+      enforcedClassification = gwReg.enforced_classification;
+    } else if (b.collectorId.includes('FIELD-PROD') && !b.collectorId.includes('SIM') && !b.collectorId.includes('LAB')) {
+      enforcedClassification = 'AUTHORIZED_FIELD_TELEMETRY';
+    }
+
+    // 2. Idempotency Check (Deduplication)
+    const packetSig = `${b.stationId}:${b.collectorId}:${b.epoch||'0'}:${b.sequenceNumber||0}:${b.sourceTimestamp}`;
+    if (store.seenPackets && store.seenPackets[packetSig]) {
+      return reply(res, 200, {
+        ok: true,
+        stationId: s.id,
+        status: statusOf(s),
+        dataClassification: s.dataClassification || enforcedClassification,
+        isHistoricalReplay: true,
+        duplicate: true,
+        sequenceNumber: b.sequenceNumber
+      });
+    }
+    if (!store.seenPackets) store.seenPackets = {};
+    store.seenPackets[packetSig] = Date.now();
+    const sigKeys = Object.keys(store.seenPackets);
+    if (sigKeys.length > 2000) {
+      for (let i = 0; i < 500; i++) delete store.seenPackets[sigKeys[i]];
+    }
+
     const fieldKeywords={
       PT:'pressureBar',pressure:'pressureBar',
       LT:'tankLevelPct',tank:'tankLevelPct',
@@ -301,6 +358,7 @@ async function handler(req,res){
     };
 
     let updatedAny=false,overallQuality='GOOD';
+    const pointValues={};
     for(const [pointId,pt] of Object.entries(b.points)){
       if(!pt||typeof pt!=='object') continue;
       const val=pt.value;
@@ -318,29 +376,52 @@ async function handler(req,res){
       if(val<lo||val>hi){
         return reply(res,422,{error:`Point ${pointId} value ${val} out of engineering bounds [${lo}, ${hi}]`});
       }
-      s[targetField]=val;
+      pointValues[targetField]=val;
       updatedAny=true;
     }
     if(!updatedAny) return reply(res,422,{error:'No recognizable telemetry points provided'});
 
+    // 3. Historical Replay and Packet Ordering Safeguard
     const incomingTime=new Date(b.sourceTimestamp).getTime();
     const lastSeenTime=s.lastSeen ? new Date(s.lastSeen).getTime() : 0;
-    const isHistoricalReplay=incomingTime < (lastSeenTime - 15000);
+    const isOlderThanLastSeen = lastSeenTime > 0 && incomingTime < (lastSeenTime - 15000);
+    const isOlderThanServerNow = incomingTime < (Date.now() - 30000);
+    const isHistoricalReplay = isOlderThanLastSeen || isOlderThanServerNow;
 
-    s.dataClassification='AUTHORIZED_FIELD_TELEMETRY';
+    s.dataClassification=enforcedClassification;
     s.collectorId=b.collectorId;
     s.sequenceNumber=b.sequenceNumber||s.sequenceNumber||0;
     s.sourceTimestamp=b.sourceTimestamp;
     s.quality=overallQuality;
-    s.online=overallQuality==='GOOD';
     s.hasTelemetry=true;
 
     if(!isHistoricalReplay){
+      for(const [fld,val] of Object.entries(pointValues)) {
+        s[fld]=val;
+      }
+      s.online=overallQuality==='GOOD';
       s.lastSeen=now();
       processRules(s,{demo:false});
       const avg=field=>{const a=stations.map(x=>x[field]).filter(v=>typeof v==='number');return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;};
       history.push({time:b.sourceTimestamp,pressure:num(avg('pressureBar'),2),flow:num(stations.reduce((a,x)=>a+(x.flowM3h||0),0)/1000,2),tank:num(avg('tankLevelPct'),1)});
       if(history.length>96) history.shift();
+
+      // Persist durable station telemetry across restarts
+      store.stationTelemetry = store.stationTelemetry || {};
+      store.stationTelemetry[s.id] = {
+        pressureBar: s.pressureBar,
+        tankLevelPct: s.tankLevelPct,
+        flowM3h: s.flowM3h,
+        turbidityNtu: s.turbidityNtu,
+        chlorineMgL: s.chlorineMgL,
+        lastSeen: s.lastSeen,
+        sequenceNumber: s.sequenceNumber,
+        collectorId: s.collectorId,
+        dataClassification: s.dataClassification,
+        quality: s.quality,
+        online: s.online
+      };
+      saveSoon();
     }
     broadcast();
     return reply(res,200,{

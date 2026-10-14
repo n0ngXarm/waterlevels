@@ -1,0 +1,93 @@
+# ==============================================================================
+# AQUA COMMAND — Fedora Single-Machine Development Environment (compose.dev.yml)
+#
+# Simulates Zone A (Field Station) and Zone B (Central Monitoring) on one host.
+# SELinux volume labels (:z) enabled for Fedora compatibility.
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # ZONE B: CENTRAL OPERATIONS & MONITORING
+  # ----------------------------------------------------------------------------
+  aqua-command:
+    build:
+      context: ./aqua-command
+      dockerfile: Dockerfile
+    image: pwa-aqua-command:dev
+    container_name: aqua_command_dev
+    restart: unless-stopped
+    env_file:
+      - .env.dev
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+      TZ: Asia/Bangkok
+    ports:
+      - "${AQUA_BIND_IP:-127.0.0.1}:8787:8787"
+    volumes:
+      - ./aqua-command/storage:/app/storage:z
+      - ./config:/app/config:ro,z
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    networks:
+      - aqua-dev-net
+
+  aqua-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pwa-water-alert:dev
+    container_name: aqua_worker_dev
+    restart: unless-stopped
+    env_file:
+      - .env.dev
+    environment:
+      TZ: Asia/Bangkok
+      AQUA_COMMAND_URL: http://aqua-command:8787
+    volumes:
+      - ./data:/app/data:z
+      - ./config:/app/config:ro,z
+    depends_on:
+      aqua-command:
+        condition: service_healthy
+    networks:
+      - aqua-dev-net
+
+  # ----------------------------------------------------------------------------
+  # ZONE A: FIELD STATION SIMULATOR (PA TAN PILOT)
+  # ----------------------------------------------------------------------------
+  zone-a-simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pwa-water-alert:dev
+    container_name: zone_a_simulator_dev
+    restart: unless-stopped
+    env_file:
+      - .env.dev
+    environment:
+      TZ: Asia/Bangkok
+      ZONE_A_INGEST_URL: http://aqua-command:8787/api/v1/ingest/telemetry
+    command: [
+      "python", "tools/simulated_edge_collector.py",
+      "--station", "CM-01",
+      "--gateway-id", "GW-CM01-PATAN",
+      "--ingest-url", "http://aqua-command:8787/api/v1/ingest/telemetry",
+      "--interval", "5",
+      "--buffer-db", "data/zone_a_buffer.db"
+    ]
+    volumes:
+      - ./data:/app/data:z
+    depends_on:
+      aqua-command:
+        condition: service_healthy
+    networks:
+      - aqua-dev-net
+
+networks:
+  aqua-dev-net:
+    driver: bridge

@@ -1,13 +1,19 @@
 """End-to-End Field Integration Test Suite for Zone A & Zone B.
 
-Tests:
+Phase 1 Remediations Verified:
 1. SimulatedFieldAdapter (nominal readings, faults, disconnects, limits)
-2. CollectorBuffer (SQLite FIFO store-and-forward, order preservation, mark_sent)
-3. EdgeCollectorAgent (live delivery, network drop buffering, reconnection replay, restart resilience)
+2. CollectorBuffer:
+   - Persistent sequence numbering & epoch tracking
+   - Bounded SQLite ring buffer (max records limit & drop oldest)
+   - Retention policy enforcement
+3. EdgeCollectorAgent:
+   - Default SIMULATED_LAB classification
+   - Monotonic persistent sequence across restarts
+   - Live delivery, network drop buffering, reconnection replay, restart resilience
 4. Transport & Gateway Authentication headers
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import http.server
 from pathlib import Path
@@ -25,7 +31,6 @@ from src.collector.edge_agent import EdgeCollectorAgent
 class MockZoneBIngestHandler(http.server.BaseHTTPRequestHandler):
     """Mock Zone B Ingestion HTTP Server for unit and integration testing."""
 
-    # Class-level test state
     received_requests: list[dict] = []
     auth_header_required: str = "valid-secret-token-32-chars-long"
     reject_with_status: int = 200
@@ -70,14 +75,15 @@ class MockZoneBIngestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Unprocessable Entity"}).encode("utf-8"))
             return
 
-        # Success
+        # Success: Echo server-enforced classification
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps({
             "ok": True,
             "stationId": parsed.get("stationId"),
-            "dataClassification": "AUTHORIZED_FIELD_TELEMETRY"
+            "dataClassification": parsed.get("dataClassification", "SIMULATED_LAB"),
+            "sequenceNumber": parsed.get("sequenceNumber", 0)
         }).encode("utf-8"))
 
 
@@ -124,12 +130,12 @@ class TestSimulatedFieldAdapter(unittest.TestCase):
 
 
 class TestCollectorBuffer(unittest.TestCase):
-    """Validates SQLite FIFO store-and-forward queue resilience."""
+    """Validates SQLite FIFO store-and-forward queue resilience and size enforcement."""
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.temp_dir.name) / "test_buffer.db"
-        self.buffer = CollectorBuffer(str(self.db_path))
+        self.buffer = CollectorBuffer(str(self.db_path), max_records=5)
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -137,7 +143,6 @@ class TestCollectorBuffer(unittest.TestCase):
     def test_fifo_ordering_and_mark_sent(self):
         self.assertEqual(self.buffer.pending_count(), 0)
 
-        # Enqueue 3 packets in sequence
         p1 = {"stationId": "CM-01", "sequenceNumber": 1, "sourceTimestamp": "2026-10-14T08:00:00Z"}
         p2 = {"stationId": "CM-01", "sequenceNumber": 2, "sourceTimestamp": "2026-10-14T08:00:05Z"}
         p3 = {"stationId": "CM-01", "sequenceNumber": 3, "sourceTimestamp": "2026-10-14T08:00:10Z"}
@@ -148,7 +153,6 @@ class TestCollectorBuffer(unittest.TestCase):
 
         self.assertEqual(self.buffer.pending_count(), 3)
 
-        # Dequeue batch of 2
         batch = self.buffer.dequeue_batch(limit=2)
         self.assertEqual(len(batch), 2)
         self.assertEqual(batch[0]["id"], id1)
@@ -156,15 +160,46 @@ class TestCollectorBuffer(unittest.TestCase):
         self.assertEqual(batch[1]["id"], id2)
         self.assertEqual(batch[1]["packet"]["sequenceNumber"], 2)
 
-        # Mark first 2 sent
         removed = self.buffer.mark_sent([id1, id2])
         self.assertEqual(removed, 2)
         self.assertEqual(self.buffer.pending_count(), 1)
 
-        # Dequeue remaining
         remaining = self.buffer.dequeue_batch(limit=10)
         self.assertEqual(len(remaining), 1)
         self.assertEqual(remaining[0]["id"], id3)
+
+    def test_persistent_sequence_and_epoch(self):
+        epoch1 = self.buffer.get_epoch()
+        self.assertTrue(epoch1.startswith("EP-"))
+        self.assertEqual(self.buffer.get_epoch(), epoch1, "Epoch must be stable across calls")
+
+        seq1 = self.buffer.get_next_sequence_number()
+        seq2 = self.buffer.get_next_sequence_number()
+        self.assertEqual(seq1, 1)
+        self.assertEqual(seq2, 2)
+        self.assertEqual(self.buffer.get_last_sequence_number(), 2)
+
+        # Simulate agent restart with fresh buffer instance pointing to same file
+        buf2 = CollectorBuffer(str(self.db_path))
+        self.assertEqual(buf2.get_epoch(), epoch1, "Restarted instance must retain previous epoch")
+        self.assertEqual(buf2.get_last_sequence_number(), 2, "Restarted instance must retain last sequence number")
+        seq3 = buf2.get_next_sequence_number()
+        self.assertEqual(seq3, 3, "Sequence number must continue monotonically")
+
+    def test_bounded_ring_buffer_overwrite(self):
+        """Validates that buffer limits prevent unbounded disk growth (drops oldest pending)."""
+        # Buffer max_records set to 5 in setUp
+        for i in range(1, 8):
+            self.buffer.enqueue({"stationId": "CM-01", "sequenceNumber": i})
+
+        # Count must never exceed max_records (5)
+        self.assertEqual(self.buffer.pending_count(), 5)
+
+        # Oldest records (1 and 2) must have been dropped to accommodate records 6 and 7
+        batch = self.buffer.dequeue_batch(limit=10)
+        self.assertEqual(len(batch), 5)
+        seqs = [b["packet"]["sequenceNumber"] for b in batch]
+        self.assertEqual(seqs, [3, 4, 5, 6, 7])
 
 
 class TestEdgeCollectorAgentE2E(unittest.TestCase):
@@ -172,7 +207,6 @@ class TestEdgeCollectorAgentE2E(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Start local MockZoneB HTTP server
         cls.server = http.server.HTTPServer(("127.0.0.1", 0), MockZoneBIngestHandler)
         cls.port = cls.server.server_port
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
@@ -197,7 +231,8 @@ class TestEdgeCollectorAgentE2E(unittest.TestCase):
             station_id="CM-01",
             collector_id="GW-CM01-PATAN",
             gateway_token="valid-secret-token-32-chars-long",
-            buffer_db_path=str(self.buffer_db)
+            buffer_db_path=str(self.buffer_db),
+            data_classification="SIMULATED_LAB"
         )
 
     def tearDown(self):
@@ -209,12 +244,12 @@ class TestEdgeCollectorAgentE2E(unittest.TestCase):
         self.assertEqual(res["status"], "DELIVERED")
         self.assertEqual(res["http_status"], 200)
 
-        # Verify request arrived at server
         self.assertEqual(len(MockZoneBIngestHandler.received_requests), 1)
         req = MockZoneBIngestHandler.received_requests[0]
         self.assertEqual(req["headers"]["X-Gateway-Token"], "valid-secret-token-32-chars-long")
         self.assertEqual(req["body"]["stationId"], "CM-01")
-        self.assertEqual(req["body"]["dataClassification"], "AUTHORIZED_FIELD_TELEMETRY")
+        self.assertEqual(req["body"]["dataClassification"], "SIMULATED_LAB")
+        self.assertTrue(req["body"]["epoch"].startswith("EP-"))
         self.assertIn("CM01_PT_01", req["body"]["points"])
 
     def test_unauthorized_token_rejection(self):
@@ -226,7 +261,6 @@ class TestEdgeCollectorAgentE2E(unittest.TestCase):
 
     def test_network_drop_buffering_and_recovery_replay(self):
         """Scenario: VPN disconnection causes agent to buffer; recovery triggers FIFO replay."""
-        # Step 1: Simulate network outage (HTTP 503 Service Unavailable)
         MockZoneBIngestHandler.reject_with_status = 503
 
         res1 = self.agent.step()
@@ -237,23 +271,26 @@ class TestEdgeCollectorAgentE2E(unittest.TestCase):
         self.assertEqual(res2["status"], "BUFFERED")
         self.assertEqual(self.agent.buffer.pending_count(), 2)
 
-        # Step 2: Restore connectivity (Zone B back online)
+        # Zone B back online
         MockZoneBIngestHandler.reject_with_status = 200
 
-        # Step 3: Next step should drain the buffered records first, then send fresh telemetry
         res3 = self.agent.step()
         self.assertEqual(res3["status"], "DELIVERED")
         self.assertEqual(self.agent.buffer.pending_count(), 0, "Buffer must be completely emptied upon recovery")
 
-    def test_collector_restart_resilience(self):
-        """Scenario: Agent restarts while records are in buffer; new process resumes without data loss."""
-        # Buffer 2 items
-        MockZoneBIngestHandler.reject_with_status = 502
-        self.agent.step()
-        self.agent.step()
-        self.assertEqual(self.agent.buffer.pending_count(), 2)
+    def test_collector_restart_resilience_and_monotonic_sequence(self):
+        """Scenario: Agent restarts while records are in buffer; sequence number continues monotonically."""
+        # Step 1: Record 1
+        res1 = self.agent.step()
+        self.assertEqual(res1["packet"]["sequenceNumber"], 1)
 
-        # Simulate agent termination and restart with a brand new instance pointing to same SQLite DB
+        # Step 2: Outage buffers record 2
+        MockZoneBIngestHandler.reject_with_status = 502
+        res2 = self.agent.step()
+        self.assertEqual(res2["packet"]["sequenceNumber"], 2)
+        self.assertEqual(self.agent.buffer.pending_count(), 1)
+
+        # Step 3: Simulate agent termination and restart with a brand new instance pointing to same DB
         del self.agent
         new_agent = EdgeCollectorAgent(
             adapter=self.adapter,
@@ -261,14 +298,16 @@ class TestEdgeCollectorAgentE2E(unittest.TestCase):
             station_id="CM-01",
             collector_id="GW-CM01-PATAN",
             gateway_token="valid-secret-token-32-chars-long",
-            buffer_db_path=str(self.buffer_db)
+            buffer_db_path=str(self.buffer_db),
+            data_classification="SIMULATED_LAB"
         )
 
-        self.assertEqual(new_agent.buffer.pending_count(), 2, "Restarted agent must detect existing buffered items")
+        self.assertEqual(new_agent.buffer.pending_count(), 1, "Restarted agent must detect existing buffered items")
 
-        # Zone B back online
+        # Step 4: Zone B back online -> sends packet 3 and flushes packet 2
         MockZoneBIngestHandler.reject_with_status = 200
-        new_agent.step()
+        res3 = new_agent.step()
+        self.assertEqual(res3["packet"]["sequenceNumber"], 3, "New agent must resume sequence number without resetting to 1")
         self.assertEqual(new_agent.buffer.pending_count(), 0, "Restarted agent successfully flushed prior buffer")
 
 

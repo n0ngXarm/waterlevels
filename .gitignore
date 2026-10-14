@@ -26,3 +26,9 @@ storage/state.json*
 *.log
 *.tmp
 .DS_Store
+
+# Backups & distribution packages
+backups/
+dist/
+*.tar.gz
+*.sha256

@@ -9,6 +9,7 @@
   },
   "data_classifications": [
     { "code": "AUTHORIZED_FIELD_TELEMETRY", "description": "ข้อมูลเซนเซอร์ภาคสนามที่รับผ่าน Secure Ingestion API จาก Edge Collector ที่ได้รับอนุญาต" },
+    { "code": "SIMULATED_LAB", "description": "ข้อมูลจำลองจาก Simulated Edge Collector ในห้องทดลอง (Lab Environment)" },
     { "code": "PUBLIC_EXTERNAL", "description": "ข้อมูลสาธารณะจากเว็บไซต์ กปภ. หรือ กรมชลประทาน" },
     { "code": "DEMO", "description": "ข้อมูลจำลองสำหรับทดสอบระบบ (Simulation)" }
   ],
@@ -327,6 +328,29 @@
       "water_level_m": 3.45,
       "threshold_m": 3.70,
       "storage_pct": 93.2
+    }
+  ],
+  "authorized_gateways": [
+    {
+      "gateway_id": "GW-CM01-PATAN",
+      "station_id": "CM-01",
+      "environment": "LAB",
+      "enforced_classification": "SIMULATED_LAB",
+      "description": "Lab Simulator Gateway (Fedora Dev)"
+    },
+    {
+      "gateway_id": "GW-CM01-NONGSERVER",
+      "station_id": "CM-01",
+      "environment": "LAB",
+      "enforced_classification": "SIMULATED_LAB",
+      "description": "Lab Simulator Gateway (nongserver Debian 13)"
+    },
+    {
+      "gateway_id": "GW-CM01-FIELD-PROD",
+      "station_id": "CM-01",
+      "environment": "PROD",
+      "enforced_classification": "AUTHORIZED_FIELD_TELEMETRY",
+      "description": "Physical Edge Collector at Pa Tan Plant (Requires PWA formal approval)"
     }
   ]
 }
