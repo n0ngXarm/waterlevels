@@ -1,0 +1,15 @@
+AQUA COMMAND Mini v0.1 — PoC / DRY-RUN
+
+1. ใช้เฉพาะเครื่องทดสอบ Windows 11 x64 ที่ได้รับอนุมัติและแยกจาก WinCC/PLC
+2. แตก ZIP ทั้งโฟลเดอร์ ไม่แยก .exe ออกจาก _internal แล้วเปิด Start.cmd
+3. กด “ข้อมูลจำลองใหม่” ควรเห็น DEMO_PUMP_01 = ON และ DEMO_VALVE_01 = OFF
+4. กด “Export structured CSV” ตั้งชื่อไฟล์ใหม่ โปรแกรมไม่เขียนทับไฟล์เดิม
+5. กด “บันทึกประวัติ dry-run” แล้วตรวจอีกครั้ง ต้องเห็นรายการซ้ำ ไม่มี Telegram ถูกส่ง
+6. เปิด examples/tag_configuration_synthetic.txt ต้องไม่มี ON/OFF เพราะเป็น configuration
+7. อ่าน README.md ก่อนใช้ไฟล์ที่เจ้าหน้าที่ส่งออกจริง หรือกำหนด Tag / quality / timezone
+8. Telegram เป็น dry-run โดยปริยาย ต้องมีรายการอนุมัติเครื่องและผู้รับ พร้อม environment และยืนยัน TEST ครั้งนั้น จึงส่งข้อความจำลองคงที่ได้
+
+ดูผลทดสอบที่ evidence/TEST_REPORT_TH.md
+อ่านวิธีติดตั้งและตรวจรับทีละขั้นใน INSTALL_TH.md
+ชุด executable นี้ทดสอบผ่าน Wine ยังไม่ได้ตรวจรับบน Windows 11 จริง
+ไม่ติดตั้งบน WinCC ไม่ต่อ PLC ไม่ scan เครือข่าย OT และไม่พร้อม Production

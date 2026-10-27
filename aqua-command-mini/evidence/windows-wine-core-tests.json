@@ -1,0 +1,13 @@
+{
+  "timestamp_utc": "2026-10-27T08:52:49.404698+00:00",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "python": "3.13.13",
+  "tests_run": 59,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "python_outbound_connection_attempts": 0,
+  "telegram": "HTTP_BOUNDARY_REPLACED_NO_REAL_SEND",
+  "data": "SYNTHETIC_ONLY",
+  "successful": true
+}

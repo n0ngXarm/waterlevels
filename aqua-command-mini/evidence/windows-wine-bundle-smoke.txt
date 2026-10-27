@@ -1,0 +1,17 @@
+{
+  "timestamp_utc": "2026-10-27T09:00:21.610630+00:00",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "python": "3.13.13",
+  "checks_passed": [
+    "packaged_cli_version",
+    "synthetic_on_off",
+    "structured_csv_export",
+    "source_unchanged",
+    "durable_duplicate_suppression",
+    "packaged_telegram_default_dry_run",
+    "packaged_gui_startup_alive_3s"
+  ],
+  "telegram_network_attempted": false,
+  "data": "SYNTHETIC_ONLY",
+  "windows_11_native_acceptance": "NOT_ESTABLISHED_BY_THIS_SCRIPT"
+}

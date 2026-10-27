@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "profile_id": "DEMO_ONLY",
+  "source_utc_offset": null,
+  "freshness_seconds": 300,
+  "future_tolerance_seconds": 5,
+  "tags": {
+    "DEMO_PUMP_01": {
+      "mapping": {
+        "0": "OFF",
+        "1": "ON"
+      },
+      "good_quality": [
+        "GOOD"
+      ]
+    },
+    "DEMO_VALVE_01": {
+      "mapping": {
+        "0": "OFF",
+        "1": "ON"
+      },
+      "good_quality": [
+        "GOOD"
+      ]
+    }
+  },
+  "telegram": {
+    "enabled": false,
+    "approved_machine_ids": [],
+    "approval_reference": "",
+    "approved_chat_id_sha256": ""
+  }
+}

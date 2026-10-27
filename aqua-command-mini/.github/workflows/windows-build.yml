@@ -1,0 +1,26 @@
+name: Windows PoC build (manual, synthetic data only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+          architecture: x64
+      - name: Build and verify using synthetic inputs
+        shell: pwsh
+        run: ./scripts/build_windows.ps1 -Python python -PythonArgs @()
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AQUA_COMMAND_Mini_v0.1_windows_x64
+          path: dist/AQUA_COMMAND_Mini_v0.1_windows_x64.zip
+          if-no-files-found: error
+          retention-days: 7

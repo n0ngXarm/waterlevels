@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv*/
+build/
+dist/
+*.spec
+*.sqlite*
+*.db*
+profile.local.json
+.env*
+evidence/local/
