@@ -1,3 +1,7 @@
+> **AQUA COMMAND Mini v0.1 สำหรับ Windows (PoC / DRY-RUN)**
+> [ดาวน์โหลดชุด Windows x64](aqua-command-mini/releases/v0.1/AQUA_COMMAND_Mini_v0.1_windows_x64.zip?raw=true) · [วิธีติดตั้งภาษาไทย](docs/AQUA_COMMAND_MINI_INSTALL_TH.md) · [Source และ tests](aqua-command-mini/)
+> เปิดจาก ZIP ที่แตกแล้ว ใช้ข้อมูลจำลองหรือไฟล์ที่อนุญาตส่งออก ไม่เชื่อม WinCC/PLC และยังไม่พร้อม Production
+
 # 💧 PWA AQUA COMMAND & TELEGRAM ALERT SYSTEM
 ### ระบบศูนย์ควบคุมการจ่ายน้ำประปาส่วนภูมิภาค (Web Dashboard) & แจ้งเตือนผ่าน Telegram แบบ 24/7
 

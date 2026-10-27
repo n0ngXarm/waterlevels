@@ -1,0 +1,74 @@
+1826 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.9
+1827 INFO: Python: 3.13.13
+1947 INFO: Platform: Windows-10-10.0.19045-SP0
+1947 INFO: Python environment: C:\Python313
+1949 INFO: wrote build\AQUA_COMMAND_Mini.spec
+1961 INFO: Removing temporary files and cleaning cache in C:\users\nong_ing\AppData\Local\pyinstaller
+1985 INFO: Module search paths (PYTHONPATH):
+['Z:\\home\\nong_ing\\Documents\\Codex\\2026-10-27\\referenced-chatgpt-conversation-this-is-an\\work\\aqua-command-mini',
+ 'C:\\Python313\\python313.zip',
+ 'C:\\Python313\\DLLs',
+ 'C:\\Python313\\Lib',
+ 'C:\\Python313',
+ 'C:\\Python313\\Lib\\site-packages',
+ 'Z:\\home\\nong_ing\\Documents\\Codex\\2026-10-27\\referenced-chatgpt-conversation-this-is-an\\work\\aqua-command-mini']
+4377 INFO: checking Analysis
+4378 INFO: Building Analysis because Analysis-00.toc is non existent
+4378 INFO: Looking for Python shared library...
+4378 INFO: Using Python shared library: C:\Python313\python313.dll
+4378 INFO: Running Analysis Analysis-00.toc
+4378 INFO: Target bytecode optimization level: 0
+4378 INFO: Initializing module dependency graph...
+4390 INFO: Initializing module graph hook caches...
+4445 INFO: Analyzing modules for base_library.zip ...
+11663 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+11693 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+11922 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+17640 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+20734 INFO: Caching module dependency graph...
+20800 INFO: Analyzing Z:\home\nong_ing\Documents\Codex\2026-10-27\referenced-chatgpt-conversation-this-is-an\work\aqua-command-mini\desktop.py
+20940 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+20958 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+21028 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+23094 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+23861 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+23868 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+25888 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+26082 INFO: Processing module hooks (post-graph stage)...
+26154 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+26175 INFO: Performing binary vs. data reclassification (927 entries)
+28684 INFO: Looking for ctypes DLLs
+28749 INFO: Analyzing run-time hooks ...
+28752 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+28768 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+28835 INFO: Creating base_library.zip...
+28886 INFO: Looking for dynamic libraries
+30619 INFO: Extra DLL search directories (AddDllDirectory): []
+30620 INFO: Extra DLL search directories (PATH): []
+32673 INFO: Warnings written to Z:\home\nong_ing\Documents\Codex\2026-10-27\referenced-chatgpt-conversation-this-is-an\work\aqua-command-mini\build\gui\AQUA_COMMAND_Mini\warn-AQUA_COMMAND_Mini.txt
+32706 INFO: Graph cross-reference written to Z:\home\nong_ing\Documents\Codex\2026-10-27\referenced-chatgpt-conversation-this-is-an\work\aqua-command-mini\build\gui\AQUA_COMMAND_Mini\xref-AQUA_COMMAND_Mini.html
+32767 INFO: checking PYZ
+32767 INFO: Building PYZ because PYZ-00.toc is non existent
+32767 INFO: Building PYZ (ZlibArchive) Z:\home\nong_ing\Documents\Codex\2026-10-27\referenced-chatgpt-conversation-this-is-an\work\aqua-command-mini\build\gui\AQUA_COMMAND_Mini\PYZ-00.pyz
+33134 INFO: Building PYZ (ZlibArchive) Z:\home\nong_ing\Documents\Codex\2026-10-27\referenced-chatgpt-conversation-this-is-an\work\aqua-command-mini\build\gui\AQUA_COMMAND_Mini\PYZ-00.pyz completed successfully.
+33145 INFO: checking PKG
+33145 INFO: Building PKG because PKG-00.toc is non existent
+33145 INFO: Building PKG (CArchive) AQUA_COMMAND_Mini.pkg
+33184 INFO: Building PKG (CArchive) AQUA_COMMAND_Mini.pkg completed successfully.
+33186 INFO: Bootloader C:\Python313\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+33186 INFO: checking EXE
+33187 INFO: Building EXE because EXE-00.toc is non existent
+33187 INFO: Building EXE from EXE-00.toc
+33187 INFO: Copying bootloader EXE to Z:\home\nong_ing\Documents\Codex\2026-10-27\referenced-chatgpt-conversation-this-is-an\work\aqua-command-mini\build\gui\AQUA_COMMAND_Mini\AQUA_COMMAND_Mini.exe
+33194 INFO: Copying icon to EXE
+33200 INFO: Copying 0 resources to EXE
+33200 INFO: Embedding manifest in EXE
+33204 INFO: Appending PKG archive to EXE
+33208 INFO: Fixing EXE headers
+33328 INFO: Building EXE from EXE-00.toc completed successfully.
+33345 INFO: checking COLLECT
+33345 INFO: Building COLLECT because COLLECT-00.toc is non existent
+33346 INFO: Removing dir Z:\home\nong_ing\Documents\Codex\2026-10-27\referenced-chatgpt-conversation-this-is-an\work\aqua-command-mini\build\frozen\AQUA_COMMAND_Mini
+33734 INFO: Building COLLECT COLLECT-00.toc
+46075 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+46146 INFO: Build complete! The results are available in: Z:\home\nong_ing\Documents\Codex\2026-10-27\referenced-chatgpt-conversation-this-is-an\work\aqua-command-mini\build\frozen

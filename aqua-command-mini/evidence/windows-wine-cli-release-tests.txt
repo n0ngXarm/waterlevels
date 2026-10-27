@@ -1,0 +1,14 @@
+test_bad_input_and_existing_demo_not_overwritten (tests.test_cli.CliTests.test_bad_input_and_existing_demo_not_overwritten) ... ok
+test_configuration_preview_no_status (tests.test_cli.CliTests.test_configuration_preview_no_status) ... ok
+test_demo_preview_export_dryrun_duplicate (tests.test_cli.CliTests.test_demo_preview_export_dryrun_duplicate) ... ok
+test_failed_open_clears_previous_snapshot (tests.test_cli.CliTests.test_failed_open_clears_previous_snapshot) ... ok
+test_module_entrypoint_is_runnable (tests.test_cli.CliTests.test_module_entrypoint_is_runnable) ... ok
+test_session_rechecks_freshness_at_action_time (tests.test_cli.CliTests.test_session_rechecks_freshness_at_action_time) ... ok
+test_telegram_default_dry_run (tests.test_cli.CliTests.test_telegram_default_dry_run) ... ok
+test_thai_json_is_utf8_even_when_console_encoding_is_ascii (tests.test_cli.CliTests.test_thai_json_is_utf8_even_when_console_encoding_is_ascii) ... ok
+test_unapproved_send_is_blocked (tests.test_cli.CliTests.test_unapproved_send_is_blocked) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 4.622s
+
+OK
