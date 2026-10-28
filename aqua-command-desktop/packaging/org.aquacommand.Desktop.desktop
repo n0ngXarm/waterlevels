@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=AQUA COMMAND
+Comment=Read-only runtime snapshots and enrolled LAN forwarding
+Exec=aqua-command
+Icon=org.aquacommand.Desktop
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+StartupWMClass=org.aquacommand.Desktop

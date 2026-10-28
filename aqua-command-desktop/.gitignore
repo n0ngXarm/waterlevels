@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.rpm
+!releases/*.rpm
+build/
+node_modules/
+*.sqlite3*
+*.jsonl
+runtime_*.csv
+.enrollment/
+**/enrollment/
+local-data/
+.env

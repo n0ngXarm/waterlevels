@@ -1,0 +1,27 @@
+window { background: #0c1623; color: #e3edf3; font-family: "Noto Sans Thai", sans-serif; font-size: 14px; }
+headerbar { background: #0b131f; border-bottom: 1px solid #253648; padding: 8px 12px; }
+.body { padding: 18px; }
+.brand { font-size: 18px; font-weight: 800; letter-spacing: 2px; }
+.readonly { color: #7ae2bd; background: #13342f; border: 1px solid #2d6453; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 800; }
+.page-title { font-size: 25px; font-weight: 700; }
+.muted { color: #a4b7c6; font-size: 13px; }
+.caption { color: #94aabd; font-size: 12px; }
+.mode { background: #122d40; color: #a5dce9; padding: 10px 14px; border-radius: 6px; font-size: 13px; }
+.card { background: #122132; border: 1px solid #293e51; padding: 16px; border-radius: 12px; }
+.card-title { color: #c4d5e1; font-size: 15px; font-weight: 700; }
+.state { color: #80dfbf; font-size: 19px; font-weight: 600; }
+button { background: #1a3042; color: #d9e8f1; border: 1px solid #3b5368; border-radius: 6px; padding: 9px 14px; box-shadow: none; }
+button:hover { background: #244158; }
+button:disabled { color: #657c8c; background: #142333; border-color: #273d50; }
+button.primary { background: #73d9ba; color: #07271f; border-color: #73d9ba; font-weight: 700; }
+button.primary:hover { background: #91e6cc; }
+button.primary:disabled { background: #284b48; color: #789a90; border-color: #284b48; }
+.metric { background: #101e2d; border: 1px solid #25394a; border-radius: 8px; padding: 10px 16px; }
+.metric-value { color: #e3f6f5; font-size: 30px; font-weight: 650; }
+.tag-grid { padding: 12px 8px; }
+.table-head { color: #87a3b7; font-size: 11px; font-weight: 700; }
+.tag-cell { padding: 5px 0; font-size: 13px; }
+textview, textview text { background: #0e1b29; color: #a4b8c9; font-family: monospace; font-size: 11px; }
+stack, scrolledwindow { background: transparent; }
+.error { color: #f6b8a6; }
+entry { background: #0d1b28; color: #dceaf0; }

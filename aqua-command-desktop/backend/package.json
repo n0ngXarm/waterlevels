@@ -1,0 +1,40 @@
+{
+  "name": "aqua-command-isometric-demo",
+  "version": "0.5.0",
+  "description": "AQUA COMMAND Real LAN LAB: offline-first runtime spools and authenticated role services with preserved isometric UI",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "bin": {
+    "aqua-demo": "./bin/aqua-demo.js"
+  },
+  "scripts": {
+    "dev": "node bin/aqua-demo.js",
+    "start": "node bin/aqua-demo.js",
+    "test": "node --test tests/*.test.js",
+    "pack:demo": "npm pack --pack-destination ..",
+    "demo:single": "node bin/aqua-lab.js single",
+    "demo:lan": "node bin/aqua-lab.js lan",
+    "enroll": "node bin/aqua-lab.js init",
+    "lab": "node bin/aqua-demo.js readonly"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "files": [
+    "bin",
+    "public",
+    "src",
+    "tests",
+    "docs",
+    "README.md",
+    "README_TH.md",
+    ".env.example",
+    "AGENTS.md",
+    "AQUA_COMMAND_CODEX_MASTER_PROMPT.md",
+    "LICENSE",
+    "start-linux.sh",
+    "start-windows.cmd",
+    "wincc"
+  ]
+}

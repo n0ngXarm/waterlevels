@@ -1,0 +1,11 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { DemoSimulator } from '../src/simulator.js';
+const demo=()=>new DemoSimulator({dataDir:fs.mkdtempSync(path.join(os.tmpdir(),'aqua-demo-')),now:()=>Date.parse('2026-10-27T12:30:00Z')});
+test('every export creates three durable local snapshots when gateway absent',()=>{const d=demo();d.exportTick();d.exportTick();assert.equal(d.state.snapshots,6);assert.equal(d.publicState().queueCount,6);assert.equal(fs.readFileSync(path.join(d.dataDir,'pc-01.jsonl'),'utf8').trim().split('\n').length,2)});
+test('joined gateway without internet retains queue, then ACK delivers on restoration',()=>{const d=demo();d.exportTick();d.setInternet(false);d.setGateway(true);assert.equal(d.publicState().gatewayQueueCount,3);d.exportTick();assert.equal(d.publicState().queueCount,6);d.setInternet(true);assert.equal(d.publicState().queueCount,0);assert.equal(d.state.delivered,6)});
+test('pump transition only notifies once; snapshots do not create notifications',()=>{const d=demo();d.setGateway(true);d.setPump('PUMP-01',false);d.setPump('PUMP-01',false);d.exportTick();assert.equal(d.state.deliveries.length,1);assert.equal(d.state.deliveries.filter(x=>x.delivered).length,1);assert.equal(fs.readFileSync(path.join(d.dataDir,'telegram-dryrun.jsonl'),'utf8').trim().split('\n').length,1)});
+test('restart restores queued snapshots',()=>{const d=demo();d.exportTick();const same=new DemoSimulator({dataDir:d.dataDir});assert.equal(same.publicState().queueCount,3)});

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#041525" />
+  <title>AQUA COMMAND | Isometric SCADA Digital Twin — DEMO</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="brand"><span class="brand-icon">A<span>•</span></span><span class="brand-name">AQUA <b>COMMAND</b><small>INDUSTRIAL OBSERVABILITY SYSTEM</small></span></div>
+    <div class="global-crumb">WATER PLANT <span>/</span> MONITORING CENTER <span>/</span> DIGITAL TWIN</div>
+    <div class="top-status"><span class="dot live"></span> <span id="modeBadge">SIMULATED RUNTIME</span> <span class="top-divider"></span><span id="clock">--:--:--</span><button id="help" class="header-btn" title="About demo">?</button></div>
+  </header>
+  <div class="content">
+    <aside class="rail">
+      <section class="module summary">
+        <h3><span class="section-led"></span> SYSTEM OVERVIEW <span class="section-id">01 / REALTIME</span></h3>
+        <div class="gauge-wrap">
+          <div class="mini-stat left-top">อุณหภูมิ <strong id="simTemp">—</strong></div>
+          <div class="mini-stat right-top">แรงดัน <strong id="simPressure">—</strong></div>
+          <div class="gauge"><div class="gauge-inner"><b id="runPercent">—</b><span>PUMPS ON (%)</span></div></div>
+          <div class="mini-stat left-bottom">ข้อมูลค้าง <strong id="sidebarQueue">0</strong></div>
+          <div class="mini-stat right-bottom">อัตราการไหล <strong id="simFlow">—</strong></div>
+        </div>
+        <div class="overview-bottom"><span id="dataQuality">รอ Runtime จริงจาก simulator</span><span id="exportCountdown">5 SEC</span></div>
+      </section>
+      <section class="module status-table">
+        <h3><span class="section-led"></span> SCADA EXPORT AGENTS <span class="section-id">02 / STATUS</span><button id="diagnostics" class="header-btn" title="Export / queue / handshake / ACK diagnostics">i</button></h3>
+        <div class="device-row"><span class="node-symbol">▣</span><div><strong>PC-01 / STATION A</strong><small id="PC-01-detail">WAITING FOR SERVICE</small></div><span class="pill" id="PC-01-life">WAIT</span></div>
+        <div class="device-row"><span class="node-symbol">▣</span><div><strong>PC-02 / STATION B</strong><small id="PC-02-detail">WAITING FOR SERVICE</small></div><span class="pill" id="PC-02-life">WAIT</span></div>
+        <div class="device-row"><span class="node-symbol">▣</span><div><strong>PC-03 / VALVE CTRL</strong><small id="PC-03-detail">WAITING FOR SERVICE</small></div><span class="pill" id="PC-03-life">WAIT</span></div>
+        <div class="thin-info">LAST EXPORT <b id="lastExport">—</b></div>
+      </section>
+      <section class="module pump-status">
+        <h3><span class="section-led"></span> PUMP RUNNING STATUS <span class="section-id">03 / DEVICE</span></h3>
+        <div id="pumpRows" class="pump-rows"></div>
+      </section>
+      <section class="module delivery">
+        <h3><span class="section-led"></span> NETWORK & NOTIFICATION <span class="section-id">04 / LINK</span></h3>
+        <div class="link-line"><span>PC4 · AQUA GATEWAY</span><strong id="gatewayBadge" class="status-bad">DISCONNECTED</strong></div>
+        <div class="link-line"><span>INTERNET EGRESS</span><strong id="internetBadge" class="status-bad">UNKNOWN</strong></div>
+        <div class="link-line"><span>TELEGRAM SINK</span><strong id="telegramMode">DRY-RUN</strong></div><div class="link-line"><span>SOURCE / GATEWAY QUEUE</span><strong id="networkQueues">— / —</strong></div>
+      </section>
+    </aside>
+    <main class="work-area">
+      <section class="stage">
+        <div class="stage-head"><div class="stage-title"><span class="stage-mark"></span><span>WATER DISTRIBUTION DIGITAL TWIN</span><small>ISOMETRIC PROCESS OVERVIEW · INTERACTIVE</small></div>
+          <div class="stage-actions"><button class="ctl small" id="resetCam">RESET VIEW</button><span class="separator"></span><span class="stage-mode">● LIVE SIMULATION</span></div></div>
+        <div id="plantViewport" class="plant-viewport">
+          <div class="overlay corner lt"></div><div class="overlay corner rt"></div><div class="overlay corner lb"></div><div class="overlay corner rb"></div>
+          <svg id="plantSvg" viewBox="0 0 1260 620" preserveAspectRatio="xMidYMid meet" aria-label="Isometric pump room and pipe process simulation">
+            <defs>
+              <linearGradient id="bodyMetal" x1="0" y1="0" x2="0.9" y2="1"><stop stop-color="#74b7cf"/><stop offset="0.22" stop-color="#2c6a86"/><stop offset="0.52" stop-color="#23485f"/><stop offset="0.82" stop-color="#477b92"/><stop offset="1" stop-color="#102e44"/></linearGradient>
+              <linearGradient id="metalShade" x1="0" y1="0" x2="0.8" y2="1"><stop stop-color="#77b6c9"/><stop offset="0.37" stop-color="#204962"/><stop offset="0.8" stop-color="#4c8092"/><stop offset="1" stop-color="#0f2f46"/></linearGradient>
+              <linearGradient id="baseMetal" x1="0" y1="0" x2="0.9" y2="1"><stop stop-color="#43859b"/><stop offset="0.5" stop-color="#174458"/><stop offset="1" stop-color="#0a273d"/></linearGradient>
+              <linearGradient id="water" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#59d5f5"/><stop offset="0.45" stop-color="#157ba4"/><stop offset="1" stop-color="#163d5d"/></linearGradient>
+              <radialGradient id="aura"><stop stop-color="#17e5fe" stop-opacity="0.22"/><stop offset="1" stop-color="#0be0fb" stop-opacity="0"/></radialGradient>
+              <filter id="softglow"><feGaussianBlur stdDeviation="4"/></filter>
+              <filter id="motorShadow"><feDropShadow dx="4" dy="8" stdDeviation="4" flood-color="#000d1d" flood-opacity="0.8"/></filter>
+              <pattern id="floorgrid" width="54" height="54" patternUnits="userSpaceOnUse" patternTransform="matrix(1 0.28 -0.8 0.52 0 0)"><path d="M 54 0 L 0 0 0 54" fill="none" stroke="#2d5670" stroke-width="0.8" opacity=".36"/></pattern>
+            </defs>
+            <g id="world">
+              <path d="M94 194 L512 3 L1218 261 L768 620 Z" fill="url(#floorgrid)" opacity=".7" />
+              <g id="pipeWork"></g><g id="tankLayer"></g><g id="pumpLayer"></g><g id="stationLabels"></g>
+            </g>
+          </svg>
+          <div class="floating-marker" id="sceneMarker"><span class="pulse"></span><span>01 / CENTRAL PUMP STATION</span></div>
+          <div class="floor-hint">DRAG TO PAN <span>·</span> SCROLL TO ZOOM <span>·</span> SELECT PUMP TO TOGGLE</div>
+          <div class="legend"><span><i class="legend-dot on"></i> RUNNING</span><span><i class="legend-dot off"></i> STOPPED</span><span><i class="legend-line"></i> WATER ROUTE</span></div>
+        </div>
+      </section>
+      <section class="toolbar">
+        <div class="operation-title"><b>OPERATION SIMULATOR</b><span>เลือกสถานการณ์สาธิต</span></div>
+        <button id="gatewayToggle" class="action primary"><span class="action-icon">▣</span><span>CONNECT GATEWAY</span></button>
+        <button id="internetToggle" class="action"><span class="action-icon">◎</span><span>INTERNET: ON</span></button>
+        <button id="exportNow" class="action"><span class="action-icon">⇩</span><span>EXPORT NOW</span></button>
+        <button id="resetAll" class="action danger"><span class="action-icon">↺</span><span>RESET LAB</span></button>
+        <div class="operation-metrics"><span>SNAPSHOTS <b id="totalSnapshots">0</b></span><span>BACKLOG <b class="amber" id="queueCount">0</b></span><span>DELIVERED <b class="green" id="deliveredCount">0</b></span></div>
+      </section>
+      <section class="bottom-panel">
+        <div class="chart-panel"><div class="panel-heading"><span class="section-led"></span> REAL-TIME SYSTEM TELEMETRY <small>MOCK MODEL FROM AGENT RUNTIME</small></div>
+          <svg id="chart" viewBox="0 0 930 216" preserveAspectRatio="none" aria-label="Simulated flow and pressure chart"></svg>
+          <div class="chart-keys"><span><i class="key flow"></i> FLOW (0–40 m³/h)</span><span><i class="key pressure"></i> PRESSURE (0–0.6 MPa)</span></div>
+        </div>
+        <div class="event-panel"><div class="panel-heading"><span class="section-led"></span> SYSTEM EVENT STREAM <small>LIVE LOG</small></div><div class="events" id="events"></div></div>
+      </section>
+    </main>
+  </div>
+  <footer><span>© AQUA COMMAND / LAB BUILD 0.4.0</span><span>SIMULATED RUNTIME • REAL TCP / ONE HOST LAB • NO PLC CONTROL</span><span id="footerDate"></span></footer>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="aboutDialog"><h2>AQUA COMMAND · DEMO</h2><p>นี่คือ Digital Twin แบบจำลองสำหรับสาธิตการ Export ทุก 5 วินาที การจัดคิวขณะไม่มี Gateway และการส่งต่อเมื่อ Internet กลับมา</p><p>แยก Agent / Gateway / Central / Dashboard เป็นคนละโปรเซสและใช้ TCP จริง ไม่มี PLC / WinCC หรือการสแกนเครือข่าย ค่าเริ่มต้น Telegram Dry-run; ข้ามเครื่องจริงยังต้องทดสอบใน LAN ที่อนุญาต</p><button id="closeDialog">ปิด</button></dialog>
+<dialog id="diagnosticsDialog" class="diagnostics-dialog"><h2>AQUA · Pipeline Diagnostics</h2><p id="verificationProof"></p><div id="diagnosticsBody"></div><p>SNAPSHOT ทุก 5 วินาที ≠ notification ทุก 5 วินาที · Pump ที่ STALE/UNKNOWN ไม่ถือว่า OFF</p><button id="faultAck">DROP NEXT ACK (LAB)</button> <button id="closeDiagnostics">ปิด</button></dialog></body></html>

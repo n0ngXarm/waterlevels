@@ -1,0 +1,105 @@
+' AQUA: WinCC V8.1 Global Script VBS ACTION BODY, not a WScript script.
+' OFFLINE TEMPLATE. Not compiled/executed in WinCC. LAB only after approval.
+' Paste into the existing Function action ... End Function wrapper.
+' Configure ONE cyclic timer trigger of 5 seconds in a LAB project.
+Const AQUA_LAB_ENABLED = False
+Const AQUA_FOLDER = "C:\AQUAData"
+Const AQUA_MAX_DAILY_BYTES = 8388608
+Dim fso, stream, names, tagName, tagObject, row, batch, stamp, dt, dayName
+Dim readError, qCode, rawValue, fileName, isNew, savedError
+
+If Not AQUA_LAB_ENABLED Then Exit Function
+On Error Resume Next
+Set fso = CreateObject("Scripting.FileSystemObject")
+If Err.Number <> 0 Then
+    HMIRuntime.Trace "AQUA: filesystem unavailable" & vbCrLf
+    Err.Clear
+    Exit Function
+End If
+If Not fso.FolderExists(AQUA_FOLDER) Then
+    HMIRuntime.Trace "AQUA: create the approved local folder first" & vbCrLf
+    Exit Function
+End If
+If fso.FileExists(AQUA_FOLDER & "\pause.flag") Then Exit Function
+
+dt = Now
+stamp = Year(dt) & "-" & Right("0" & Month(dt), 2) & "-" & Right("0" & Day(dt), 2) & "T" & Right("0" & Hour(dt), 2) & ":" & Right("0" & Minute(dt), 2) & ":" & Right("0" & Second(dt), 2)
+dayName = Year(dt) & Right("0" & Month(dt), 2) & Right("0" & Day(dt), 2)
+fileName = AQUA_FOLDER & "\runtime_" & dayName & ".csv"
+Err.Clear
+isNew = Not fso.FileExists(fileName)
+If Not isNew Then
+    If fso.GetFile(fileName).Size >= AQUA_MAX_DAILY_BYTES Then
+        HMIRuntime.Trace "AQUA: daily file quota reached; old data retained" & vbCrLf
+        Exit Function
+    End If
+End If
+If Err.Number <> 0 Then
+    HMIRuntime.Trace "AQUA: cannot inspect output file" & vbCrLf
+    Err.Clear
+    Exit Function
+End If
+
+names = Array("LAB_PUMP_01.RUN_S", "LAB_PUMP_02.RUN_S", "LAB_PUMP_03.RUN_S", "LAB_PUMP_04.RUN_S", "LAB_PUMP_05.RUN_S")
+batch = ""
+For Each tagName In names
+    Err.Clear
+    Set tagObject = Nothing
+    rawValue = ""
+    qCode = ""
+    Set tagObject = HMIRuntime.Tags(tagName)
+    If Err.Number = 0 Then tagObject.Read
+    readError = Err.Number
+    Err.Clear
+    If readError = 0 Then
+        rawValue = tagObject.Value
+        qCode = tagObject.QualityCode
+        readError = Err.Number
+        Err.Clear
+        If readError = 0 Then
+            If IsNull(rawValue) Or IsEmpty(rawValue) Then
+                rawValue = ""
+            ElseIf VarType(rawValue) = 11 Then
+                If rawValue Then
+                    rawValue = "1"
+                Else
+                    rawValue = "0"
+                End If
+            ElseIf IsNumeric(rawValue) Then
+                rawValue = Replace(CStr(rawValue), ",", ".")
+            Else
+                rawValue = ""
+                readError = -1
+            End If
+        End If
+    End If
+    If readError <> 0 Then
+        rawValue = ""
+        qCode = ""
+    End If
+    ' Preserve raw quality/error. Do not turn failed reads into OFF.
+    row = stamp & ";" & tagName & ";" & rawValue & ";" & qCode & ";" & readError
+    batch = batch & row & vbCrLf
+Next
+
+Err.Clear
+Set stream = fso.OpenTextFile(fileName, 8, True, 0)
+If Err.Number <> 0 Then
+    HMIRuntime.Trace "AQUA: cannot open snapshot file" & vbCrLf
+    Err.Clear
+    Exit Function
+End If
+If isNew Then stream.WriteLine "timestamp_local;tag_name;raw_value;quality_code;read_error"
+stream.Write batch
+savedError = Err.Number
+Err.Clear
+stream.Close
+If savedError <> 0 Or Err.Number <> 0 Then
+    HMIRuntime.Trace "AQUA: snapshot write/close failed; check local storage" & vbCrLf
+Else
+    HMIRuntime.Trace "AQUA: snapshot saved " & stamp & vbCrLf
+End If
+Err.Clear
+Set stream = Nothing
+Set fso = Nothing
+On Error GoTo 0
