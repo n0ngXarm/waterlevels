@@ -1,5 +1,5 @@
 Name: aqua-command-desktop
-Version: 0.7.0
+Version: 0.8.0
 Release: 1%{?dist}
 Summary: Native read-only AQUA snapshot collector and LAN relay
 License: MIT
@@ -35,7 +35,7 @@ cp -a backend/src/lan %{buildroot}%{_datadir}/%{name}/backend/src/
 install -m 644 backend/package.json %{buildroot}%{_datadir}/%{name}/backend/
 # Service location is fixed by the supervisor; do not install old web entry points.
 install -m 644 backend/bin/aqua-service.js %{buildroot}%{_datadir}/%{name}/backend/bin/
-install -m 644 desktop/app.py desktop/client.py desktop/consent.py desktop/model.py desktop/host.mjs desktop/style.css %{buildroot}%{_datadir}/%{name}/desktop/
+install -m 644 desktop/app.py desktop/console.py desktop/presentation.py desktop/client.py desktop/consent.py desktop/model.py desktop/host.mjs desktop/style.css %{buildroot}%{_datadir}/%{name}/desktop/
 install -m 755 packaging/aqua-command %{buildroot}%{_bindir}/aqua-command
 install -m 644 packaging/org.aquacommand.Desktop.desktop %{buildroot}%{_datadir}/applications/
 install -m 644 packaging/icons/org.aquacommand.Desktop.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
@@ -47,5 +47,6 @@ install -m 644 packaging/icons/org.aquacommand.Desktop.svg %{buildroot}%{_datadi
 %{_datadir}/applications/org.aquacommand.Desktop.desktop
 %{_datadir}/icons/hicolor/scalable/apps/org.aquacommand.Desktop.svg
 %changelog
-* Wed Oct 28 2026 AQUA COMMAND contributors - 0.7.0-1
-- Native GTK4 frontend with private IPC, strict read-only input and RPM launcher.
+* Wed Oct 28 2026 AQUA COMMAND contributors - 0.8.0-1
+- G2 Option B native UI foundations with seven pages and provenance-safe existing bindings.
+- Backend, IPC, consent and queue implementation unchanged; Runtime connector remains unavailable.

@@ -1,37 +1,41 @@
-window { background: #101b2a; color: #e5edf4; font-family: "Noto Sans Thai", sans-serif; font-size: 14px; }
-headerbar { background: #0b1420; border-bottom: 1px solid #2a3b50; padding: 8px 16px; }
-.body { padding: 22px; }
+window { background: #0b1420; color: #eef5fa; font-family: "Noto Sans Thai", sans-serif; font-size: 10.5pt; }
+headerbar { background: #0e1b2a; border-bottom: 1px solid #2b4257; padding: 6px 12px; }
+.body { padding: 14px 18px; }
 .dialog-body { padding: 24px; }
-.sidebar { padding: 22px 16px; background: #0c1522; border-right: 1px solid #26374b; }
-.brand { font-size: 18px; font-weight: 800; letter-spacing: 2px; }
-.readonly { color: #89dac4; background: #15372f; border: 1px solid #346358; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; }
-.page-title { font-size: 25px; font-weight: 700; }
-.side-title { font-size: 18px; font-weight: 700; margin-bottom: 24px; }
-.eyebrow { color: #82b7e2; font-size: 12px; font-weight: 700; }
-.muted { color: #b4c5d5; font-size: 14px; }
-.caption { color: #9cafc2; font-size: 12px; }
-.mode, .notice { background: #332c1d; color: #f0d494; padding: 12px 16px; border: 1px solid #655439; border-radius: 8px; font-size: 13px; }
-.overview { padding: 4px 4px 12px 0; }
-.card { background: #17263a; border: 1px solid #30445c; padding: 18px; border-radius: 12px; }
-.flow-card { background: #142339; border: 1px solid #304b68; border-top: 3px solid #5d9ed1; padding: 16px; border-radius: 10px; }
-.card-title { color: #e4eef8; font-size: 17px; font-weight: 700; }
-.state { color: #d2e5f8; font-size: 17px; font-weight: 600; }
-.review-details { background: #112133; padding: 16px; border: 1px solid #36516b; border-radius: 8px; font-size: 15px; }
-button { background: #223a53; color: #e7f0fa; border: 1px solid #45627f; border-radius: 7px; padding: 10px 14px; box-shadow: none; }
-button:hover { background: #315371; }
-button:disabled { color: #8294a7; background: #172535; border-color: #2c4053; }
-button.primary { background: #70b9ed; color: #082239; border-color: #70b9ed; font-weight: 700; }
-button.primary:hover { background: #98d1fa; }
-button.primary:disabled { background: #28455f; color: #a0b6c9; border-color: #375269; }
-button.danger { color: #ffd0bd; background: #482c2b; border-color: #82504a; }
-button.nav { background: transparent; border-color: transparent; padding: 12px 8px; }
-button.nav:hover, button.nav:focus { background: #223a53; border-color: #45627f; }
-.metric { background: #152336; border: 1px solid #30445b; border-radius: 8px; padding: 12px; }
-.metric-value { color: #b8defc; font-size: 30px; font-weight: 700; }
-.tag-grid { padding: 16px; }
-.table-head { color: #91badb; font-size: 13px; font-weight: 700; }
-.tag-cell { padding: 9px 0; font-size: 14px; }
-textview, textview text { background: #132236; color: #c9d9e8; font-size: 14px; }
+.sidebar { padding: 18px 12px; background: #0e1b2a; border-right: 1px solid #2b4257; }
+.brand { font-size: 13.5pt; font-weight: 800; letter-spacing: 1px; }
+.readonly { color: #43c6a0; background: #142e30; border: 1px solid #34665d; padding: 5px 10px; border-radius: 6px; font-size: 9pt; font-weight: 700; }
+.page-title { font-size: 18pt; font-weight: 700; }
+.side-title { font-size: 12pt; font-weight: 700; margin-bottom: 16px; }
+.eyebrow { color: #40c7db; font-size: 8.25pt; font-weight: 700; }
+.caption, .micro { color: #a5b8c8; font-size: 9pt; }
+.micro { font-size: 8.25pt; }
+.muted { color: #a5b8c8; font-size: 10.5pt; }
+.display-status { color: #a5b8c8; font-size: 9pt; }
+.mode, .notice { background: #302a1f; color: #e7b35d; padding: 7px 10px; border: 1px solid #635237; border-radius: 6px; font-size: 9pt; }
+.console-panel { background: #122234; border: 1px solid #2b4257; padding: 12px; border-radius: 8px; }
+.panel-title { font-size: 11.25pt; font-weight: 700; }
+.detail-copy { font-size: 9.75pt; color: #a5b8c8; }
+.review-details { background: #122234; padding: 16px; border: 1px solid #2b4257; border-radius: 8px; font-size: 11.25pt; }
+button { background: #192d42; color: #eef5fa; border: 1px solid #39566e; border-radius: 6px; padding: 7px 10px; box-shadow: none; }
+button:hover { background: #244258; }
+button:focus-visible, entry:focus-visible { outline: 2px solid #40c7db; outline-offset: 2px; }
+button:disabled { color: #a5b8c8; background: #142235; border-color: #2b4257; }
+button.primary { background: #40c7db; color: #08232b; border-color: #40c7db; font-weight: 700; }
+button.primary:disabled { background: #28445a; color: #a5b8c8; border-color: #39566e; }
+button.danger { color: #ffd0d4; background: #48272f; border-color: #7a4651; }
+button.nav { background: transparent; border-color: transparent; padding: 10px 8px; }
+button.nav:checked { color: #40c7db; background: #192d42; border-color: #2b4257; }
+button.table-link { background: transparent; border-color: transparent; padding: 7px 0; font-size: 9.75pt; }
+button.table-link:hover { color: #40c7db; }
+.metric { background: #122234; border: 1px solid #2b4257; border-radius: 8px; padding: 9px 12px; }
+.metric-value { color: #eef5fa; font-size: 20.25pt; font-weight: 700; }
+.pipeline-stage { background: #192d42; border: 1px solid #2b4257; padding: 9px; border-radius: 6px; }
+.stage-value { font-size: 9pt; color: #eef5fa; }
+.table-head { color: #a5b8c8; font-size: 9pt; font-weight: 700; padding: 8px 0; border-bottom: 1px solid #2b4257; }
+.table-cell { color: #eef5fa; padding: 8px 0; font-size: 9.75pt; border-bottom: 1px solid #22384b; }
+.empty-state { color: #a5b8c8; padding: 24px 8px; font-size: 10.5pt; }
+.mono { font-family: "DejaVu Sans Mono", monospace; font-size: 9.75pt; }
 stack, scrolledwindow { background: transparent; }
-.error { color: #ffc2aa; }
-entry { background: #0d1b28; color: #dceaf0; }
+.error { color: #ec7481; }
+entry { background: #122234; color: #eef5fa; border: 1px solid #39566e; }

@@ -1,14 +1,15 @@
 #!/usr/bin/python3
 """Native, operator-started read-only workstation. Opening it starts no workers."""
-import argparse,json,pathlib,sys,threading
+import argparse,json,pathlib,sys,threading,copy
 import gi
 gi.require_version('Gtk','4.0')
 from gi.repository import Gtk,Gdk,Gio,GLib,Pango
 from client import BackendClient
 from model import present_status,prepare_profile,read_tag_names,atomic_json,owned_directory,valid_tags
 from consent import ConsentBook,scope_key
+from console import ConsoleView,PAGES
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-VERSION='0.7.0'
+VERSION='0.8.0'
 def label(text='',css=None,x=0):
  w=Gtk.Label(label=text,xalign=x);w.set_wrap(True)
  if css:w.add_css_class(css)
@@ -76,7 +77,7 @@ class SourceEditor(Gtk.Window):
 class AquaWindow(Gtk.ApplicationWindow):
  def __init__(self,app,state_root,port):
   super().__init__(application=app,title='AQUA COMMAND');self.set_default_size(1320,820);self.set_size_request(1050,650)
-  self.state_root=pathlib.Path(state_root);self.port=port;self.client=None;self.status={};self.pending={};self.tag_widgets={};self.last_export=None;self.closing=False;self.switching=False;self.generation=0;self.consent_dialog=None;self.source_editor=None;self.capture_requested=False;self.source_mode='runtime';self.settings={}
+  self.state_root=pathlib.Path(state_root);self.port=port;self.client=None;self.status={};self.pending={};self.tag_widgets={};self.last_export=None;self.closing=False;self.switching=False;self.generation=0;self.consent_dialog=None;self.source_editor=None;self.capture_requested=False;self.host_error=False;self.presentation_timer=None;self.source_mode='runtime';self.settings={}
   try:
    with (self.state_root/'preferences.json').open('rb') as f:raw=f.read(32769)
    p=json.loads(raw) if len(raw)<=32768 else {}
@@ -85,33 +86,37 @@ class AquaWindow(Gtk.ApplicationWindow):
   except (ValueError,OSError,AttributeError):pass
   self.book=ConsentBook(self.state_root,self.settings.get('sourceDirectory'))
   css=Gtk.CssProvider();css.load_from_path(str(ROOT/'desktop/style.css'));Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),css,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-  header=Gtk.HeaderBar();brand=label('AQUA COMMAND','brand');brand.set_wrap(False);header.set_title_widget(brand);header.pack_start(label('  DESKTOP  ','eyebrow'));header.pack_end(label('อ่านอย่างเดียว','readonly'));self.set_titlebar(header)
-  shell=box();self.set_child(shell);side=box(True,10,'sidebar');side.set_size_request(185,-1);side.append(label('สถานีของคุณ','eyebrow'));side.append(label('เก็บค่าปั๊ม\nส่งต่ออย่างมีสิทธิ์','side-title'));shell.append(side)
-  self.pages=Gtk.Stack();self.pages.set_hexpand(True);self.pages.set_vexpand(True);self.pages.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-  for key,name in [('overview','ภาพรวมการทำงาน'),('values','ค่าปั๊มที่อ่านได้'),('logs','ประวัติการทำงาน'),('permissions','สิทธิ์และการเชื่อมต่อ')]:side.append(button(name,lambda _,k=key:self.pages.set_visible_child_name(k),'nav'))
-  spacer=box();spacer.set_vexpand(True);side.append(spacer);side.append(label('ไม่สั่งเปิด / ปิดปั๊ม\nไม่แก้ WinCC / PLC','caption'));side.append(label('Linux LAB · '+VERSION,'caption'))
-  main=box(True,12,'body');main.set_hexpand(True);shell.append(main)
-  title_row=box(spacing=12);title_box=box(True,4);title_box.set_hexpand(True);title_box.append(label('เก็บข้อมูลปั๊มจากต้นทาง','page-title'));title_box.append(label('เลือกแหล่งข้อมูล อนุญาตอ่าน แล้วค่อยอนุญาตส่ง','muted'));title_row.append(title_box);title_row.append(button('ตั้งค่าแหล่งข้อมูล',self.source_dialog));main.append(title_row)
-  self.mode=label('','mode');main.append(self.mode);main.append(self.pages)
-  overview=box(True,16,'overview');overview_scroll=Gtk.ScrolledWindow();overview_scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.AUTOMATIC);overview_scroll.set_child(overview);self.pages.add_named(overview_scroll,'overview')
-  flow=box(spacing=12);overview.append(flow)
-  self.source_value,self.source_detail=self.flow_card(flow,'01  แหล่งข้อมูล','')
-  self.store_value,self.store_detail=self.flow_card(flow,'02  เก็บไว้ในเครื่อง','ทุก 5 วินาที · คิวถาวร')
-  self.dest_value,self.dest_detail=self.flow_card(flow,'03  ส่งไปเครื่องรับ','')
-  controls=box(True,12,'card');overview.append(controls);self.record_state=label('','state');controls.append(self.record_state);self.observed=label('','muted');controls.append(self.observed)
-  row=box(spacing=10);self.start_button=button('เริ่มอ่านทุก 5 วินาที',lambda _:self.request_capture(),'primary');self.stop_button=button('หยุดอ่าน',lambda _:self.send('recording',running=False));self.end_button=button('หยุดงานทั้งหมด',lambda _:self.end_session());row.append(self.start_button);row.append(self.stop_button);row.append(self.end_button);controls.append(row)
-  self.network=label('','state');controls.append(self.network);row=box(spacing=10);self.send_button=button('อนุญาตส่งข้อมูล',lambda _:self.request_transfer());self.stop_send_button=button('หยุดส่ง',lambda _:self.send('transfer',running=False));row.append(self.send_button);row.append(self.stop_send_button);controls.append(row);self.egress=label('','caption');controls.append(self.egress)
-  metrics=box(spacing=10);self.metrics={}
-  for key,name in [('snapshots','ชุดค่าที่เก็บแล้ว'),('pending','ชุดข้อมูลรอส่ง'),('gateway_pending','ค้างที่เครื่องรับ'),('delivered','ปลายทางยืนยันแล้ว')]:
-   tile=box(True,4,'metric');tile.set_hexpand(True);tile.append(label(name,'caption'));v=label('—','metric-value');tile.append(v);self.metrics[key]=v;metrics.append(tile)
-  overview.append(metrics);self.telegram=label('','notice');overview.append(self.telegram)
-  scroll=Gtk.ScrolledWindow();scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.AUTOMATIC);self.grid=Gtk.Grid(column_spacing=24,row_spacing=8);self.grid.add_css_class('tag-grid');scroll.set_child(self.grid);self.pages.add_named(scroll,'values')
-  logs=Gtk.ScrolledWindow();self.log_view=Gtk.TextView(editable=False,cursor_visible=False,wrap_mode=Gtk.WrapMode.WORD_CHAR);logs.set_child(self.log_view);self.pages.add_named(logs,'logs')
-  permissions=box(True,16,'card');permissions.append(label('คุณควบคุมการเริ่มงาน','card-title'));self.permission_status=label('','review-details');permissions.append(self.permission_status);permissions.append(label('เปิดโปรแกรม: ไม่อ่าน ไม่สร้างข้อมูล ไม่ตรวจเครือข่าย และไม่ส่งเอง\nเริ่มอ่าน: ยินยอมครั้งเดียวต่อการเริ่มงาน อ่านต่อเนื่องทุก 5 วินาที\nเริ่มส่ง: ต้องอนุญาตแยกจากการอ่าน\nไม่ถามซ้ำ: จำเฉพาะชุดข้อมูลและปลายทางนี้ แต่ยังต้องกดเริ่มเอง\nเปลี่ยนแหล่งข้อมูลหรือปลายทาง: ขออนุญาตใหม่','muted'));permissions.append(button('ถอนสิทธิ์ทั้งหมดและหยุดงาน',self.revoke_permissions,'danger'));self.pages.add_named(permissions,'permissions')
-  footer=box(spacing=12);self.message=label('ยังไม่มีงานทำงานอยู่ เลือกแหล่งข้อมูลเพื่อเริ่ม','caption');self.message.set_hexpand(True);footer.append(self.message);self.export_button=button('บันทึก CSV ล่าสุด',lambda _:self.send('export_csv'));self.folder_button=button('เปิดโฟลเดอร์',self.open_exports);footer.append(self.export_button);footer.append(self.folder_button);main.append(footer)
-  self.connect('close-request',self.on_close);self.render({})
- def flow_card(self,parent,title,value):
-  card=box(True,8,'flow-card');card.set_hexpand(True);card.append(label(title,'eyebrow'));v=label(value,'card-title');v.set_max_width_chars(28);card.append(v);detail=label('','caption');detail.set_max_width_chars(32);detail.set_selectable(True);card.append(detail);parent.append(card);return v,detail
+  header=Gtk.HeaderBar();brand=label('AQUA COMMAND','brand');brand.set_wrap(False);header.set_title_widget(brand);local=label('LOCAL LAB · 1 HOST','eyebrow');local.set_wrap(False);header.pack_start(local);header.pack_end(label('READ ONLY','readonly'));self.set_titlebar(header)
+  shell=box();self.set_child(shell);side=box(True,6,'sidebar');side.set_size_request(232,-1);side.append(label('NETWORK + SCADA','eyebrow'));side.append(label('Operations Console','side-title'));shell.append(side)
+  self.console=ConsoleView(self);self.pages=self.console.pages;header.pack_end(self.console.freeze_button);self.nav_buttons={};first=None
+  for key,name,_ in PAGES:
+   nav=Gtk.ToggleButton(label=name);nav.add_css_class('nav')
+   if first:nav.set_group(first)
+   else:first=nav
+   nav.connect('toggled',lambda b,k=key:self.pages.set_visible_child_name(k) if b.get_active() else None);side.append(nav);self.nav_buttons[key]=nav
+  first.set_active(True);spacer=box();spacer.set_vexpand(True);side.append(spacer);side.append(label('Configured endpoints เท่านั้น\nไม่มี NIC / Hostname inventory\nWinCC Runtime: unavailable','caption'));side.append(button('สิทธิ์ / การเชื่อมต่อ',self.permissions_dialog));side.append(label('G2 UI preview · '+VERSION,'caption'))
+  main=box(True,8,'body');main.set_hexpand(True);shell.append(main);self.page_title=label('Operations Overview','page-title');main.append(self.page_title)
+  self.display_status=label('','display-status');main.append(self.display_status);self.mode=label('','mode');main.append(self.mode)
+  actions=Gtk.FlowBox();actions.set_selection_mode(Gtk.SelectionMode.NONE);actions.set_max_children_per_line(7);actions.set_min_children_per_line(1);actions.set_column_spacing(6);actions.set_row_spacing(6);main.append(actions)
+  self.start_button=button('เริ่มอ่านทุก 5s',lambda _:self.request_capture(),'primary');self.stop_button=button('หยุดอ่าน',lambda _:self.send('recording',running=False));self.send_button=button('อนุญาตส่ง',lambda _:self.request_transfer());self.stop_send_button=button('หยุดส่ง',lambda _:self.send('transfer',running=False));self.end_button=button('หยุดงานทั้งหมด',lambda _:self.end_session());self.source_button=button('ตั้งค่าแหล่งข้อมูล',self.source_dialog)
+  for b in (self.start_button,self.stop_button,self.send_button,self.stop_send_button,self.end_button,self.source_button):actions.append(b)
+  main.append(self.pages);footer=box(spacing=8);self.message=label('รอผู้ใช้เลือก Source และอนุญาต — ยังไม่มีงานทำงานอยู่','caption');self.message.set_hexpand(True);self.message.set_ellipsize(Pango.EllipsizeMode.END);self.message.set_max_width_chars(80);footer.append(self.message);self.export_button=button('บันทึก CSV ล่าสุด',lambda _:self.send('export_csv'));self.folder_button=button('เปิดโฟลเดอร์',self.open_exports);footer.append(self.export_button);footer.append(self.folder_button);main.append(footer)
+  self.pages.connect('notify::visible-child-name',self.page_changed);self.connect('close-request',self.on_close);self.render({});self.presentation_timer=GLib.timeout_add_seconds(1,self.refresh_presentation)
+ def page_changed(self,*_):
+  key=self.pages.get_visible_child_name();self.page_title.set_text(next(title for k,_,title in PAGES if k==key))
+  if not self.nav_buttons[key].get_active():self.nav_buttons[key].set_active(True)
+ def update_display_status(self,frozen=False):
+  if not hasattr(self,'display_status'):return
+  if self.host_error:self.display_status.set_text('BACKEND NOT REPORTING · ข้อมูลค้าง / CACHED · สถานะงานยังไม่ยืนยัน — กดหยุดงานทั้งหมดก่อนเริ่มใหม่')
+  elif frozen:self.display_status.set_text('CACHED DISPLAY · พักภาพที่ '+self.console.last_model.get('updated','Not reported')+' · การเก็บ/ส่งยังทำงานตามสิทธิ์เดิม')
+  else:self.display_status.set_text('G2 · existing-field bindings · IP แสดงเป็น configured endpoint ไม่ใช่ observed NIC · ไม่มีการสแกน')
+ def permissions_dialog(self,_):
+  if self.consent_dialog or self.source_editor or self.closing:return
+  dialog=Gtk.Window(title='สิทธิ์และการเชื่อมต่อ',transient_for=self,modal=True);dialog.set_default_size(640,500);body=box(True,14,'dialog-body');dialog.set_child(body);body.append(label('คุณควบคุมการเริ่มงาน','page-title'))
+  body.append(label('เปิดโปรแกรมใหม่: ไม่อ่าน ไม่สร้างคิว ไม่ probe และไม่ส่งเอง\nอนุญาตอ่าน: ต่อเนื่องทุก5s จนหยุด\nอนุญาตส่ง: แยกจากสิทธิ์อ่าน\nไม่ถามซ้ำ: จำเฉพาะ scope เดิม แต่ต้องกดเริ่มเอง\nถอนสิทธิ์: หยุดงาน คิวเดิมยังอยู่','detail-copy'))
+  scope=self.scopes();body.append(label('จำสิทธิ์อ่านชุดนี้: '+('มี' if self.book.approved('capture',scope[0]) else 'ไม่มี')+'\nจำสิทธิ์ส่งชุดนี้: '+('มี' if self.book.approved('transfer',scope[1]) else 'ไม่มี'),'notice'))
+  def revoke(_):dialog.destroy();self.revoke_permissions(None)
+  body.append(button('ถอนสิทธิ์ทั้งหมดและหยุดงาน',revoke,'danger'));body.append(button('ปิด',lambda _:dialog.close()));dialog.present()
  def scopes(self):
   capture=scope_key({'mode':self.source_mode,'settings':self.settings,'interval':5,'readOnly':True,'state':str(self.state_root.absolute())})
   transfer=scope_key({'capture':capture,'gateway':f'http://127.0.0.1:{self.port+1}','gatewayId':'PC-04','central':f'http://127.0.0.1:{self.port+2}','telegram':'dry-run'})
@@ -145,14 +150,16 @@ class AquaWindow(Gtk.ApplicationWindow):
    if self.source_mode=='csv':
     if not self.settings.get('sourceDirectory'):raise ValueError('ยังไม่ได้เลือกโฟลเดอร์ Runtime CSV — จะไม่ใช้ข้อมูล LAB แทน')
     valid_tags(self.settings.get('tags'))
+   self.host_error=False
    self.profile=prepare_profile(self.state_root,self.settings if self.source_mode=='csv' else {});self.generation+=1;generation=self.generation;self.client=BackendClient(ROOT,self.profile,lambda m:GLib.idle_add(self.on_backend,m,generation),self.port);self.message.set_text('กำลังเริ่มตามสิทธิ์ที่อนุญาต — การส่งยังปิดอยู่');self.start_button.set_sensitive(False)
   except (ValueError,OSError,RuntimeError,TypeError) as e:self.capture_requested=False;self.show_error(str(e))
  def on_backend(self,m,generation):
+  if not isinstance(m,dict):self.host_error=True;self.show_error('Host message invalid');return False
   if self.closing or self.switching or generation!=self.generation:return False
   if m.get('type') in ('ready','status'):
-   self.render(m.get('data',{}))
+   self.host_error=False;self.render(m.get('data',{}))
    if m.get('type')=='ready' and self.capture_requested:self.capture_requested=False;self.send('recording',running=True,approved=True)
-  elif m.get('type')=='error':self.show_error(m.get('message','ส่วนเก็บข้อมูลหยุดทำงาน'))
+  elif m.get('type')=='error':self.host_error=True;self.refresh_presentation();self.show_error(m.get('message','ส่วนเก็บข้อมูลหยุดทำงาน'))
   elif 'id' in m:
    command=self.pending.pop(m['id'],None)
    if not m.get('ok'):self.show_error(m.get('error',{}).get('message','ทำรายการไม่ได้'));return False
@@ -170,43 +177,23 @@ class AquaWindow(Gtk.ApplicationWindow):
    if command=='recording':self.start_button.set_sensitive(False);self.stop_button.set_sensitive(False)
    if command=='transfer':self.send_button.set_sensitive(False);self.stop_send_button.set_sensitive(False)
   except (OSError,RuntimeError) as e:self.show_error(str(e))
+ def refresh_presentation(self):
+  if self.closing:return False
+  if self.client and self.client.process.poll() is not None:self.host_error=True
+  self.render(self.status)
+  return True
  def render(self,status):
-  self.status=status;v=present_status(status);active=self.client is not None and not self.switching;capturing=status.get('captureAllowed') is True;sending=status.get('transferAllowed') is True
-  mode_names={'runtime':'WinCC Runtime จริง','csv':'ไฟล์ Runtime CSV','lab':'LAB · ข้อมูลจำลอง'}
-  self.source_value.set_text(mode_names[self.source_mode]);self.source_detail.set_text('ยังไม่มีช่องทางอ่านที่ได้รับอนุญาต' if self.source_mode=='runtime' else self.settings.get('sourceDirectory','ข้อมูลทดสอบในเครื่อง'))
-  self.store_value.set_text('ทุก 5 วินาที · อ่านอย่างเดียว');self.store_detail.set_text(str(getattr(self,'profile',{}).get('data',self.state_root/'profiles')))
-  self.dest_value.set_text('เครื่องรับ LAB ในเครื่องนี้');self.dest_detail.set_text(f"PC-04 · 127.0.0.1:{self.port+1}\nTelegram: ทดสอบ ไม่ส่งจริง")
-  self.mode.set_text('ยังไม่พร้อมอ่าน WinCC Runtime — ไม่มี OPC UA ที่เปิดใช้งานและยังไม่ได้ตกลงช่องทางอื่น' if self.source_mode=='runtime' else 'LAB ที่เลือกเอง · ไม่เชื่อม WinCC / PLC และไม่มี Internet จริง' if self.source_mode=='lab' else 'ไฟล์ CSV ที่เลือกเอง · ไม่ใช่การอ่าน WinCC โดยตรง')
-  self.record_state.set_text(v['recording'] if active and capturing else 'รออนุญาต / หยุดอ่านอยู่')
-  self.observed.set_text('ข้อมูลต้นทางล่าสุด: '+v['observed'] if active else 'ยังไม่ได้อ่านข้อมูลต้นทางในครั้งนี้')
-  self.start_button.set_sensitive(not self.closing and not self.switching and self.source_mode!='runtime' and not capturing and not self.capture_requested)
-  self.stop_button.set_sensitive(active and capturing);self.end_button.set_sensitive(active);self.send_button.set_sensitive(active and not sending and (status.get('snapshots') or 0)>0);self.stop_send_button.set_sensitive(active and sending)
-  self.network.set_text('การส่ง: อนุญาตแล้ว · '+v['network'] if sending else 'การส่ง: ยังไม่อนุญาต — เก็บคิวไว้ในเครื่อง')
-  self.egress.set_text('ส่งเฉพาะเครื่องรับทดสอบที่แสดงด้านบน ไม่มีการสแกน LAN' if sending else 'ยังไม่ตรวจ Internet หรือส่งข้อมูลไปเครื่องรับ')
-  self.telegram.set_text('โหมด LAB: ตัวเลข “ปลายทางยืนยันแล้ว” หมายถึงปลายทางจำลองในเครื่องนี้ ไม่ใช่ Telegram หรือ Internet จริง')
-  self.permission_status.set_text(f"อ่านข้อมูล: {'กำลังอ่านตามสิทธิ์' if capturing else 'ปิด'}\nส่งข้อมูล: {'อนุญาตแล้ว' if sending else 'ปิด'}\nจำการอนุญาตอ่าน: {'มี เฉพาะชุดนี้' if self.book.approved('capture',self.scopes()[0]) else 'ถามก่อนเริ่ม'}\nจำการอนุญาตส่ง: {'มี เฉพาะชุดนี้' if self.book.approved('transfer',self.scopes()[1]) else 'ถามก่อนเริ่ม'}")
-  for k,w in self.metrics.items():w.set_text(str(v[k]) if active and v[k] is not None else '—')
-  self.export_button.set_sensitive(active and (status.get('snapshots') or 0)>0);self.folder_button.set_sensitive(self.last_export is not None)
-  self.render_tags(v['rows'] if active else []);self.log_view.get_buffer().set_text(self.activities(status))
- def render_tags(self,rows):
-  tags=[r['tag'] for r in rows]
-  if list(self.tag_widgets)!=tags or not self.grid.get_first_child():
-   self.tag_widgets={}
-   while self.grid.get_first_child():self.grid.remove(self.grid.get_first_child())
-   for i,name in enumerate(['ชื่อ Tag','ค่าที่อ่าน','สถานะปั๊ม','คุณภาพ']):self.grid.attach(label(name,'table-head'),i,0,1,1)
-   if not rows:self.grid.attach(label('ยังไม่มีค่า — เลือกแหล่งข้อมูลและอนุญาตอ่านก่อน','muted'),0,1,4,1)
-   for n,row in enumerate(rows,1):
-    widgets=[]
-    for i,text in enumerate([row['tag'],'','','']):
-     w=label(text,'tag-cell');w.set_selectable(True)
-     if i==0:w.set_hexpand(True);w.set_ellipsize(Pango.EllipsizeMode.MIDDLE);w.set_max_width_chars(36);w.set_tooltip_text(row['tag'])
-     self.grid.attach(w,i,n,1,1);widgets.append(w)
-    self.tag_widgets[row['tag']]=widgets
-  for row in rows:
-   ws=self.tag_widgets[row['tag']];ws[1].set_text('—' if row['raw'] is None else str(row['raw']));ws[2].set_text({'ON':'ทำงาน','OFF':'หยุด'}.get(row['state'],'ไม่ทราบ'));ws[3].set_text({'GOOD':'อ่านได้','BAD':'ข้อมูลไม่สมบูรณ์','UNVERIFIED_MAPPING':'ยังไม่ยืนยันความหมาย'}.get(row['quality'],row['quality']))
- def activities(self,status):
-  names={'SNAPSHOT':'บันทึกค่าปั๊มลงเครื่องแล้ว','STATE_CHANGE':'พบสถานะปั๊มเปลี่ยน','DELIVERY':'เครื่องรับยืนยันได้รับข้อมูล','LAN_CONNECT':'ยืนยันตัวตนเครื่องรับแล้ว','LAN_DISCONNECT':'เครื่องรับขาดการเชื่อมต่อ','RETRY':'ยังส่งไม่ได้ เก็บข้อมูลไว้เพื่อส่งใหม่'}
-  return '\n\n'.join(e.get('time','')+'  '+names.get(e.get('kind'),e.get('kind','กิจกรรม')) for e in status.get('events',[])[:30]) or 'ยังไม่เริ่มงาน จึงยังไม่มีประวัติในครั้งนี้'
+  status=status if isinstance(status,dict) else {};self.status=status;shown=copy.deepcopy(status)
+  if self.host_error:
+   shown['captureAllowed']=False;shown['transferAllowed']=False
+   for role in [*(shown.get('agents') or []),shown.get('gateway'),shown.get('central')]:
+    if isinstance(role,dict):role['online']=False
+  records=status.get('snapshots');has_records=isinstance(records,(int,float)) and not isinstance(records,bool) and records>0
+  active=self.client is not None and not self.switching;capturing=shown.get('captureAllowed') is True and active;sending=shown.get('transferAllowed') is True and active
+  self.console.update(shown,self.source_mode,self.settings,self.port,active);self.update_display_status(self.console.frozen)
+  mode={'runtime':'UNAVAILABLE — ยังไม่มี WinCC Runtime connector ที่อนุญาต','csv':'FILE — CSV ที่ผู้ใช้เลือก ไม่ใช่การยืนยัน Live WinCC','lab':'SIMULATED — LAB ที่เลือกเอง / ไม่เชื่อม PLC หรือ WinCC'}[self.source_mode]
+  self.mode.set_text(mode+' · Data: '+','.join(self.console.latest.get('reading_modes',[]))+(' · สถานะอ่าน/ส่ง: ไม่ทราบ (Backend ไม่รายงาน)' if self.host_error else ' · อ่าน: '+('อนุญาต' if capturing else 'หยุด/รอสิทธิ์')+' · ส่ง: '+('อนุญาต' if sending else 'หยุด/รอสิทธิ์')))
+  self.start_button.set_sensitive(not self.closing and not self.switching and self.source_mode!='runtime' and not capturing and not self.capture_requested and not self.host_error);self.stop_button.set_sensitive(capturing);self.end_button.set_sensitive(active);self.send_button.set_sensitive(active and not self.host_error and not sending and has_records);self.stop_send_button.set_sensitive(sending);self.export_button.set_sensitive(active and not self.host_error and has_records);self.folder_button.set_sensitive(self.last_export is not None)
  def show_error(self,message):
   self.message.set_text(message[:350]);self.start_button.set_sensitive(False);self.stop_button.set_sensitive(False);self.send_button.set_sensitive(False);self.stop_send_button.set_sensitive(False);self.export_button.set_sensitive(False)
  def open_exports(self,_):
@@ -224,7 +211,7 @@ class AquaWindow(Gtk.ApplicationWindow):
   def close():
    if old:old.close()
    def done():
-    self.switching=False;self.render({});self.message.set_text('หยุดงานแล้ว ข้อมูลเดิมยังอยู่ในเครื่อง')
+    self.switching=False;self.host_error=False;self.render({});self.message.set_text('หยุดงานแล้ว ข้อมูลเดิมยังอยู่ในเครื่อง')
     if after and not self.closing:after()
     return False
    GLib.idle_add(done)
@@ -236,7 +223,9 @@ class AquaWindow(Gtk.ApplicationWindow):
   self.end_session(clear)
  def on_close(self,_):
   if self.closing:return True
-  self.closing=True;client=self.client;self.client=None;self.generation+=1
+  self.closing=True
+  if self.presentation_timer:GLib.source_remove(self.presentation_timer);self.presentation_timer=None
+  client=self.client;self.client=None;self.generation+=1
   if self.consent_dialog:self.consent_dialog.destroy()
   if self.source_editor:self.source_editor.destroy()
   def finish():

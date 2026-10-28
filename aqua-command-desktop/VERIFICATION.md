@@ -1,4 +1,35 @@
-# 0.7.0 permission and UX increment
+# 0.8.0 — G2 Native Option B preview
+
+Approval: user “go to build program?” after the G1 Option B recommendation; “continue” confirms ongoing work. Scope is G2 UI foundations and safe existing-field bindings, with RPM preview delivery. G3–G5, backend gaps and WinCC/OPC/network work remain unapproved.
+
+Changed UI files: desktop/app.py, style.css, new console.py and presentation.py, desktop tests/ui_test.py/layout_test.py. Packaging metadata installs the new UI modules and labels version0.8; no dependency changes. Engine, IPC, data model/CSV source and consent implementations are protected by before/after SHA256 checks.
+
+| Item | Behavior / evidence boundary |
+| --- | --- |
+| Seven native pages | Navigation and existing counters/values/status/logs; no website/webview |
+| Unknown identity | Configured loopback endpoint shown; observed NIC IP/Hostname/OS login unavailable |
+| Provenance | Selected source vs reported data mode separated; FILE is not Live WinCC |
+| Freshness | Display-only1s tick ages retained timestamps, masks dead host status; does not poll/read/write source |
+| Freeze / search | Presentation only; collector and authorized forwarding continue |
+| Read/send consent | Existing flow preserved; startup idle, cancel starts nothing, scoped remember still requires manual start, revoke stops owned roles |
+| Deferred capabilities | Browse, direct WinCC, item rules, hot reload, queue-row lookups and full audit ledger visibly unavailable |
+| Test environment | LAB data only; private temporary headless Wayland compositor/session bus for actual widget allocations. No physical desktop/network settings modified |
+| Installer check | RPM payload extracted to private prefix, actual launcher/native modules exercised. System-wide DNF transaction not performed |
+
+Fresh G2 verification on Fedora44:
+
+- Existing backend functional suite:50 passed,0 failed,0 skipped. These are existing LAB/loopback regression gates, not new UI-stage or physical-LAN acceptance.
+- Pure desktop tests:23 passed (7 preserved and16 presentation tests).
+- Native installed-payload workflow:PASS for idle launch, cancel, separate consent, manual start with remembered grant, revoke/relaunch, CSV export, seven pages, display freeze/filter and stale Backend indication.
+- Actual GTK allocations:56 page/resolution/font combinations passed:seven pages at1366×768,1440×900,1600×900,1920×1080 with100% and125% text. Title height increased33→41 pixels (sources37→46); this checks actual text growth. Tables/pages scroll within the window. This is not a full screen-reader or operator-usability acceptance.
+- SHA256 protection:all38 engine/IPC/model/consent source files unchanged.
+- RPM0.8.0 builds, launcher reports0.8.0,22 installed code/data files match source, no scriptlets or web/runtime/credential/test payload. The native tests imported the extracted RPM modules; no system-wide DNF transaction was performed.
+
+Exact layout allocations and protected-file hashes are recorded in the G2 delivery report. Earlier results below are historical; they are not claims that direct Runtime/physical LAN/Windows/Telegram have passed.
+
+Rollback: close the app, revert the G2 UI commit or reinstall the prior consent-safe0.7 package after review. Preserve user state, SQLite, source files and ACK/cursor data. No migration was introduced.
+
+# Historical 0.7.0 permission and UX increment
 
 This increment addresses operator permission before any work, separate collection/transfer permission, explicit unavailable WinCC Runtime, and a clearer native workflow. It does not implement a direct WinCC driver or authorize production changes.
 

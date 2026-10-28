@@ -1,6 +1,17 @@
-# AQUA COMMAND Desktop 0.7.0
+# AQUA COMMAND Desktop 0.8.0 — G2 Option B preview
 
 โปรแกรม Desktop แบบอ่านอย่างเดียวบน Fedora 44 ใช้หน้าต่าง GTK4 โดยตรง ไม่เปิดเว็บไซต์หรือเบราว์เซอร์
+
+## ขอบเขต G2 ที่สร้างแล้ว
+
+Native GTK Desktop แบบ B มี7หน้า: Overview, Network Topology, SCADA Sources, Monitored Items, Live Monitoring, Gateway & Delivery และ Alerts & Audit ใช้ข้อมูลจากระบบเดิม ไม่มี Backend/API/DB/IPC/consent implementation ใหม่
+
+- Network แสดง configured loopback endpoints ของ Agent/Gateway/Central ที่อยู่เครื่องเดียว ไม่ใช่ NIC IP หรือทะเบียนคอมพิวเตอร์ใน LAN ไม่ใส่ Hostname ปลอมและไม่มีการสแกน
+- Counters แยก snapshots / local pending events / Gateway pending events / Central accepted events พร้อม coverage และสถานะ cached ไม่ใช้ Delivered แทน Telegram
+- Live Monitoring แยก RAW, normalized state, quality code, freshness และ observation time กรอง/ค้นหาเฉพาะหน้าจอได้ คลิก Tag เพื่อดูรายละเอียด/Read error
+- พักการแสดงผลได้โดยการเก็บ/ส่งตามสิทธิ์ยังเดินต่อ แสดง CACHED ชัดเจนเมื่อพัก ภาพจะไม่คง CURRENT หาก Backend หยุดรายงาน
+- Sources/Items แสดง capability และชื่อที่ตั้งค่าไว้ ปุ่ม OPC Browse, one-item test, Add/Disable rule, hot reload, per-event queue query และ audit export ยังปิดพร้อมเหตุผล เพราะต้องอนุมัติ G3–G5/backend scope แยก
+- WinCC Runtime จริงยังไม่มี connector ที่ผ่าน LAB รุ่นนี้ไม่เปิด OPC UA ไม่แก้ WinCC และไม่อ้างว่าอ่าน Runtime ได้จากการอ่าน CSV
 
 ## พฤติกรรมเมื่อเปิดโปรแกรม
 
@@ -32,12 +43,16 @@ LAB ใช้เครื่องส่ง เครื่องรับ แ�
 ## ติดตั้ง
 
 ```sh
-sudo dnf install ./aqua-command-desktop-0.7.0-1.fc44.noarch.rpm
+sudo dnf install ./aqua-command-desktop-0.8.0-1.fc44.noarch.rpm
 ```
 
 เปิด **AQUA COMMAND** จากเมนูแอป ต้องมี Python3, PyGObject, GTK4 และ Node22.13+ ตาม dependency ใน RPM ไม่มีบริการเปิดอัตโนมัติ ไม่มี install scriptlets ไม่มี firewall/NAT/bridge/Internet sharing
 
 การทดสอบนักพัฒนาใช้ payload ของ RPM ที่แตกลงโฟลเดอร์ส่วนตัวและเปิด launcher จริง ไม่ได้ติดตั้งทั่วระบบด้วย DNF ในเครื่องนี้ RPM ยังไม่ได้ลงลายเซ็น Windows .exe, WinCC Runtime จริง, LAN ข้ามสองเครื่อง, Telegram จริง และไฟดับจริง ยังไม่ผ่านการตรวจรับ
+
+## ข้อกำหนดไฟล์ CSV เดิม
+
+อ่านไฟล์ runtime_YYYYMMDD.csv ที่มีหัว timestamp_local;tag_name;raw_value;quality_code;read_error และ complete frame ตรงรายชื่อที่ตั้งค่าไว้ Source ปัจจุบันยังไม่ใช่ตัวเลือก subset จาก CSV ที่มี Tag อื่นปน ห้ามเข้าใจว่าการกรองตารางเป็นการเปลี่ยนรายการที่ collector อ่าน
 
 ## ตรวจสอบ / ถอนการติดตั้ง
 

@@ -1,11 +1,29 @@
-# Operator permission / UX correction
+# G2 — Native Option B UI foundations and existing bindings
 
-User requirement: actual WinCC Runtime pump tags, strictly read-only. OPC UA is not enabled; do not enable services or modify WinCC. No auto-start or silent LAB substitution. The unimplemented direct Runtime connection stays explicitly unavailable.
+User approval: “go to build program?” following the G1 recommendation for Option B and G2 only. Deliver a native RPM preview of approved UI foundations; do not implement G3–G5/backend gaps. WinCC/OPC/PLC/network access remains unapproved and unavailable.
 
-- [x] Reproduce auto-start and add independent backend capture/transfer gates.
-- [x] Replace startup UX with source/storage/destination review, separate approvals, scoped remember and revoke controls; always require manual start.
-- [x] Test idle/cancel/no state writes, queued local capture, separate delivery, revocation and relaunch. Fix review-discovered request/restart races with regressions.
-- [x] Build and exercise version0.7 RPM payload; 50 backend tests, 7 Python tests and native installed-payload consent integration pass.
-- Delivery target: origin `codex/aqua-native-desktop-rpm`; confirm publication using the remote commit and delivery report.
+**Architecture:** Keep existing manual-start app lifecycle and consent, private JSON-lines host, existing engine and all source/cursor/ACK behavior. Add a pure presentation adapter and a native seven-page console using only existing fields. Unknown capabilities are visibly unavailable. Package metadata changes only to deliver the new UI preview, with no dependency changes.
 
-Real Runtime integration remains a separate pending LAB gate: agree an approved supported read channel, then validate against WinCC V8.1. Do not claim it works from CSV/LAB evidence.
+**Spec:** G1_DESIGN_PROPOSAL.md and DATA_BINDING_MATRIX.md in the task's outputs/aqua-uiux-v2.1-g0-g1; original v2.1 pack read during G0/G1.
+
+## Constraints
+
+- No backend/API/DB/config schema/IPC/consent implementation changes. Protected engine hashes captured under work/g2-build.
+- No startup worker, read, scan or egress. Capture/send remain independent manual approvals; remembered scope never autoruns.
+- Network page shows configured loopback endpoints, not invented NIC IP or hostname. One local Agent, Gateway and Central are logical roles on one host.
+- Raw value, normalized state, source mode, quality and freshness are distinct. Central ACK is not Telegram delivery.
+- Existing supported CSV/LAB source settings work; new item rules/browse/test-read/audit export stay disabled with reasons.
+
+## Tasks
+
+- [x] Write failing tests for idle/unknown, partial counts, stale reporter/egress, FILE provenance, BAD/stale/mapping, receipt semantics and secret exclusion. Implement desktop/presentation.py as pure data transformation.
+- [x] Add desktop/console.py, integrate Option B seven-page shell into app.py and style.css. Retain lifecycle and permission methods. Add display-only filter/freeze and safe endpoint copy.
+- [x] Exercise all seven pages, manual consent flow, freeze without stopping collection, revoke/source changes and desktop layouts. Preserve backend functional suite.
+- [x] Review diff for read-only/scope regressions, fix serious findings, verify engine hashes.
+- [x] Build version0.8 G2 preview RPM, test packaged payload and provide operator guide, screenshots and stage report. Stop before G3.
+
+## Public delivery
+
+No plant-specific samples/tags, secrets, generated enrollment/DBs or private workstation paths in commits/package. Keep work on existing codex/aqua-native-desktop-rpm feature branch; no main merge/production deploy. Reverting G2 must not delete user queues or change WinCC/source input.
+
+G2 verification:50 backend tests,23 Python tests, installed-payload native workflow and56 actual native layout combinations passed. All38 protected engine files unchanged. G3–G5 remain unapproved; no Runtime/physical-LAN/Windows/real-Telegram acceptance claim.
