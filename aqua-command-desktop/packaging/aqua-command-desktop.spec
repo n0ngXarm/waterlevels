@@ -1,5 +1,5 @@
 Name: aqua-command-desktop
-Version: 0.6.0
+Version: 0.7.0
 Release: 1%{?dist}
 Summary: Native read-only AQUA snapshot collector and LAN relay
 License: MIT
@@ -18,7 +18,9 @@ Requires: hicolor-icon-theme
 Native GTK4 desktop frontend for read-only local runtime CSV collection,
 durable queues and authenticated forwarding through explicitly enrolled
 LAB gateways. No browser, webview or dashboard HTTP listener is launched.
-WinCC/PLC writes are not supported. Default LAB fixture and Telegram dry-run.
+WinCC/PLC writes are not supported. Default idle; separate operator approval
+is required for capture and forwarding. LAB data is explicitly selected.
+Direct WinCC Runtime remains unavailable pending an approved read channel.
 %prep
 %setup -q
 %build
@@ -33,7 +35,7 @@ cp -a backend/src/lan %{buildroot}%{_datadir}/%{name}/backend/src/
 install -m 644 backend/package.json %{buildroot}%{_datadir}/%{name}/backend/
 # Service location is fixed by the supervisor; do not install old web entry points.
 install -m 644 backend/bin/aqua-service.js %{buildroot}%{_datadir}/%{name}/backend/bin/
-install -m 644 desktop/app.py desktop/client.py desktop/model.py desktop/host.mjs desktop/style.css %{buildroot}%{_datadir}/%{name}/desktop/
+install -m 644 desktop/app.py desktop/client.py desktop/consent.py desktop/model.py desktop/host.mjs desktop/style.css %{buildroot}%{_datadir}/%{name}/desktop/
 install -m 755 packaging/aqua-command %{buildroot}%{_bindir}/aqua-command
 install -m 644 packaging/org.aquacommand.Desktop.desktop %{buildroot}%{_datadir}/applications/
 install -m 644 packaging/icons/org.aquacommand.Desktop.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
@@ -45,5 +47,5 @@ install -m 644 packaging/icons/org.aquacommand.Desktop.svg %{buildroot}%{_datadi
 %{_datadir}/applications/org.aquacommand.Desktop.desktop
 %{_datadir}/icons/hicolor/scalable/apps/org.aquacommand.Desktop.svg
 %changelog
-* Wed Oct 28 2026 AQUA COMMAND contributors - 0.6.0-1
+* Wed Oct 28 2026 AQUA COMMAND contributors - 0.7.0-1
 - Native GTK4 frontend with private IPC, strict read-only input and RPM launcher.

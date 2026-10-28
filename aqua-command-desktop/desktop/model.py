@@ -58,12 +58,12 @@ def prepare_profile(state_root,settings):
 
 def present_status(status,now=None):
  a=(status.get('agents') or [{}])[0];now=now or datetime.datetime.now(datetime.timezone.utc)
- try:observed=datetime.datetime.fromisoformat(a['observedAt'].replace('Z','+00:00'));age=(now-observed).total_seconds();stale=age>15 or age< -30
+ try:observed=datetime.datetime.fromisoformat((a.get('observedAt') or '').replace('Z','+00:00'));age=(now-observed).total_seconds();stale=age>15 or age< -30
  except (KeyError,TypeError,ValueError):observed=None;stale=True
  online=a.get('online') is True;running=online and a.get('recording') is True
  if not online:recording='กำลังเชื่อมต่อส่วนเก็บข้อมูล'
  elif not running:recording='หยุดเก็บชั่วคราว'
- elif a.get('lastError'):recording='รอไฟล์ต้นทางที่อ่านได้'
+ elif a.get('sourceError'):recording='รอไฟล์ต้นทางที่อ่านได้'
  elif not observed:recording='รอไฟล์ค่าจากต้นทาง'
  elif stale:recording='ยังไม่มีข้อมูลใหม่จากต้นทาง'
  else:recording='กำลังเก็บข้อมูลทุก5วินาที'

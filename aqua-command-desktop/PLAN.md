@@ -1,10 +1,11 @@
-# Native desktop build
+# Operator permission / UX correction
 
-Approved scope: native frontend + RPM, read-only WinCC/PLC, publish code/package to origin waterlevels.
+User requirement: actual WinCC Runtime pump tags, strictly read-only. OPC UA is not enabled; do not enable services or modify WinCC. No auto-start or silent LAB substitution. The unimplemented direct Runtime connection stays explicitly unavailable.
 
-- [x] Keep current read-only backend and genericize public fixtures. Run44-test baseline.
-- [x] Add a headless status model and private JSON-lines desktop host; no HTTP UI listener. Test lifecycle, pause/export allowlist and source boundaries.
-- [x] Build native GTK4 frontend, local input configuration and status/queue/tag/log views. Test UI model/actions and render native window.
-- [x] Build relocatable RPM with verified Fedora dependencies, desktop launcher/icon and no web frontend payload. Extract and launch payload for smoke test; a system package transaction is unverified.
-- [x] Review and audit public contents/secrets; provide concrete RPM and verification guide.
-- Publication target: origin branch `codex/aqua-native-desktop-rpm`. Confirm delivery by comparing the local commit with that remote ref; do not modify production main.
+- [x] Reproduce auto-start and add independent backend capture/transfer gates.
+- [x] Replace startup UX with source/storage/destination review, separate approvals, scoped remember and revoke controls; always require manual start.
+- [x] Test idle/cancel/no state writes, queued local capture, separate delivery, revocation and relaunch. Fix review-discovered request/restart races with regressions.
+- [x] Build and exercise version0.7 RPM payload; 50 backend tests, 7 Python tests and native installed-payload consent integration pass.
+- Delivery target: origin `codex/aqua-native-desktop-rpm`; confirm publication using the remote commit and delivery report.
+
+Real Runtime integration remains a separate pending LAB gate: agree an approved supported read channel, then validate against WinCC V8.1. Do not claim it works from CSV/LAB evidence.

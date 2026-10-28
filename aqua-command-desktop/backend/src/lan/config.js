@@ -17,6 +17,7 @@ export function enrollment(root,options={}){
   const configs={};for(const [id,file] of Object.entries(old.files)){if(!path.resolve(file).startsWith(root+path.sep))throw Error('Enrollment file must remain in LAB directory');configs[id]=JSON.parse(fs.readFileSync(file,'utf8'))}
   if(old.sourceDirectory)assertStorageOutsideInput(old.sourceDirectory,root);
   if(options.csvTags&&JSON.stringify(options.csvTags)!==JSON.stringify(configs['PC-01']?.csv?.tags))throw Error('Tag settings changed: choose a separate data directory');
+  if(options.requireConsent===true){for(const c of Object.values(configs))c.requireConsent=true;old.files=configSet(dir,configs);privateFile(manifestPath,old)}
   const changed=(options.readOnly===true&&!old.readOnly)||(options.internetMode&&options.internetMode!==old.internetMode);
   if(changed){if(options.readOnly===true){for(const c of Object.values(configs))c.readOnly=true;old.readOnly=true}if(options.internetMode){configs.gateway.internetMode=options.internetMode;configs.dashboard.internetMode=options.internetMode;old.internetMode=options.internetMode}old.files=configSet(dir,configs);privateFile(manifestPath,old)}return {...old,configs,root};
  }
@@ -38,6 +39,7 @@ export function enrollment(root,options={}){
   configs.gateway.internetOnline=true;configs.dashboard.profile='readonly';
   if(!sourceDirectory)configs.fixture={role:'fixture',id:'LAB-FIXTURE',fixtureOwned:true,fixtureRoot:root,listen:{host:'127.0.0.1',port:0},dataDir:path.join(session,'LAB-FIXTURE'),outputDirectory:input,tags,intervalMs};
  }
+ if(options.requireConsent===true)for(const c of Object.values(configs))c.requireConsent=true;
  const files=configSet(dir,configs);
  const manifest={version:1,profile,sourceDirectory,basePort:port,generation,intervalMs,readOnly,internetMode:configs.gateway.internetMode,files};privateFile(manifestPath,manifest);return {...manifest,configs,root};
 }

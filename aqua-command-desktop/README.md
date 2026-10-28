@@ -1,35 +1,54 @@
-# AQUA COMMAND Desktop
+# AQUA COMMAND Desktop 0.7.0
 
-Native GTK4 desktop application, distributed as RPM for Fedora44. No website, browser, embedded webview, dashboard HTTP listener or Docker is needed. The frontend controls only AQUA recording and local CSV export; WinCC/PLC access remains strictly read-only.
+โปรแกรม Desktop แบบอ่านอย่างเดียวบน Fedora 44 ใช้หน้าต่าง GTK4 โดยตรง ไม่เปิดเว็บไซต์หรือเบราว์เซอร์
 
-โปรแกรมเดสก์ท็อปสำหรับ Fedora 44: ติดตั้ง RPM แล้วเปิด **AQUA COMMAND** จากเมนูแอป เริ่มต้นเป็นข้อมูล LAB และ Telegram dry-run อ่านค่าอย่างเดียว ไม่สั่งงานปั๊มหรือเขียนกลับ WinCC/PLC
+## พฤติกรรมเมื่อเปิดโปรแกรม
 
-Install the RPM with the system package manager, then launch **AQUA COMMAND** from the applications menu:
+- ไม่เริ่มส่วนเก็บข้อมูล ไม่สร้างคิว ไม่อ่านต้นทาง ไม่ตรวจ Internet และไม่ส่งเอง
+- แสดงแหล่งข้อมูล ที่เก็บข้อมูล และเครื่องรับที่เลือกอย่างชัดเจน
+- เริ่มต้นที่ **WinCC Runtime จริง: ยังไม่พร้อม** ไม่มีช่องทางอ่าน Runtime ที่ตกลงและอนุญาตแล้ว จึงไม่สลับไปใช้ LAB หรือ CSV เอง
+- ผู้ใช้ระบุว่าเครื่อง WinCC ยังไม่ได้เปิด OPC UA รุ่นนี้จะไม่เปิดบริการ ไม่แก้โครงการ ไม่ติดตั้งสคริปต์ และไม่แก้ WinCC/PLC ให้เอง
+
+## วิธีใช้งานและสิทธิ์
+
+1. เลือก **ตั้งค่าแหล่งข้อมูล** บันทึกอย่างเดียว ยังไม่เริ่มงาน มีทางเลือก WinCC Runtime (ยังไม่พร้อม), Runtime CSV ที่ส่งออกไว้แล้ว หรือ LAB ที่เลือกเอง
+2. กด **เริ่มอ่านทุก 5 วินาที** ตรวจต้นทาง รายชื่อ Tag ช่วงเวลา และที่เก็บ แล้วอนุญาต การอ่านต่อเนื่องจนหยุด ไม่ถามทุก 5 วินาที
+3. ข้อมูลเก็บในเครื่องก่อน การส่งยังปิด ต้องกด **อนุญาตส่งข้อมูล** และตรวจเครื่องรับ/ปลายทางแยกต่างหาก
+4. ช่อง **ไม่ถามซ้ำ** จำเฉพาะแหล่งข้อมูลหรือปลายทางชุดนั้น ยังต้องกดเริ่มเองทุกครั้งที่เปิดโปรแกรม เปลี่ยนขอบเขตจะถามใหม่ ไม่มีกล่องเลือกที่ถูกติ๊กไว้ล่วงหน้า
+5. หยุดอ่าน หยุดส่ง หรือ **หยุดงานทั้งหมด** ได้ กด **ถอนสิทธิ์ทั้งหมดและหยุดงาน** เพื่อล้างสิทธิ์ที่จำไว้ คิวเดิมยังอยู่
+
+งานที่ส่งออกไปแล้วก่อนหยุดอาจตอบรับกลับมาได้ โปรแกรมรอให้งานที่เริ่มไปแล้วจบ แต่ไม่เริ่มคำขอส่งถัดไปหลังถอนสิทธิ์ การเปิดโปรแกรมครั้งถัดไปยังคงหยุดอยู่ แม้จำสิทธิ์ไว้
+
+## ข้อมูลจริงกับสิ่งที่ทดสอบ
+
+**ยังอ่าน WinCC Runtime โดยตรงไม่ได้** ต้องตกลงช่องทางอ่านที่ WinCC รองรับกับเจ้าของระบบและทดสอบใน LAB ก่อน ห้ามเปิด OPC UA หรือแก้ WinCC Production อัตโนมัติ ไฟล์ Tag Management เช่น Export all.txt เป็นรายชื่อ/การตั้งค่า ไม่ใช่ค่าปั๊มปัจจุบัน
+
+CSV เป็นทางเลือกสำหรับไฟล์ค่าปัจจุบันที่ระบบอื่นส่งออกไว้แล้ว อ่านเฉพาะชื่อ Tag ที่ผู้ใช้เลือก ไม่แก้ไฟล์ต้นทาง ไม่แปลงข้อมูลเสีย/เก่าเป็น OFF ต้องยืนยันความหมาย 0/1 และ Quality ก่อนแสดงสถานะปั๊ม
+
+LAB ใช้เครื่องส่ง เครื่องรับ และปลายทางทดสอบในเครื่องเดียว (loopback) ไม่มี Internet จริง Telegram เป็น dry-run ตัวเลขปลายทางยืนยันแล้วจึงไม่ใช่การส่ง Telegram จริง หน้าต่างยังตั้งเครื่องรับข้าม LAN ไม่ได้ ไม่มีการสแกนเครื่องอื่น
+
+คิวรองรับ ACK/retry/idempotency และเปิดใหม่ต่อจากข้อมูลเดิมได้ แต่จะไม่อ่านหรือส่งต่อเองก่อนอนุญาตในแต่ละครั้งที่เริ่มงาน เปลี่ยนแหล่งข้อมูลจะหยุด session เดิมและเก็บโปรไฟล์/คิวเดิมไว้ เปิดแหล่งเดิมเพื่อทำงานต่อ
+
+## ติดตั้ง
 
 ```sh
-sudo dnf install ./aqua-command-desktop-0.6.0-1.fc44.noarch.rpm
+sudo dnf install ./aqua-command-desktop-0.7.0-1.fc44.noarch.rpm
 ```
 
-The default mode is labelled LAB data with Telegram dry-run. In **ตั้งค่าแหล่งข้อมูล**, select an approved runtime CSV directory and import a local tag-name file or WinCC Tag Management configuration export. Only Binary `.RUN_S` names are selected from configuration exports; addresses/commands are not imported. Actual names remain in private local settings, never in this public repository. CSV values must already be exported by WinCC; the app does not connect to or modify WinCC/PLC. Quality/mapping confirmation is required before asserting ON/OFF; missing/bad/stale values remain unknown.
+เปิด **AQUA COMMAND** จากเมนูแอป ต้องมี Python3, PyGObject, GTK4 และ Node22.13+ ตาม dependency ใน RPM ไม่มีบริการเปิดอัตโนมัติ ไม่มี install scriptlets ไม่มี firewall/NAT/bridge/Internet sharing
 
-Buttons: start/stop local collection, save CSV, open the saved-data folder. Changing source settings retains prior profiles/queues. State is under the user's local state directory, separate from the source. The reader retains existing cursor/transaction, quotas, ACK/retry/dedup and explicit-peer safeguards. Gateways are enrolled, not found by network-wide scanning. Internet checks/actual Telegram remain explicit approved test configuration; default traffic is loopback only.
+การทดสอบนักพัฒนาใช้ payload ของ RPM ที่แตกลงโฟลเดอร์ส่วนตัวและเปิด launcher จริง ไม่ได้ติดตั้งทั่วระบบด้วย DNF ในเครื่องนี้ RPM ยังไม่ได้ลงลายเซ็น Windows .exe, WinCC Runtime จริง, LAN ข้ามสองเครื่อง, Telegram จริง และไฟดับจริง ยังไม่ผ่านการตรวจรับ
 
-**Save CSV exports recent retained snapshots**, bounded to 2,000 events / 250 KB of source payload per click. The window warns if retained records exceed the export view. This is not an unlimited archive: the source retains up to 2,000 ACKed events and 10,000 pending events; full pending storage stops capture with an error and retains unACKed records. The original runtime CSV folder is never changed. Changing profiles parks the previous profile's queues; reopen the same settings to resume them.
-
-For a short demonstration: open the app, wait about 10 seconds for snapshots and local delivery, pause collection, resume it, save CSV, and open the output folder. The pause button only affects AQUA's local reader. Switching to approved runtime CSV requires tag names, the file timezone, and confirmation of value/quality mapping. A Tag Management configuration export supplies names only; it does not contain runtime snapshots and cannot replace the runtime CSV feed.
-
-The native window currently runs a single-machine LAB profile with its enrolled loopback agent/Gateway/Central. It does not configure a second computer from the UI. Real LAN transport is covered by local socket tests; joining two physical machines and testing real internet egress require a separately approved LAB setup. No claim of automatic discovery of arbitrary internet-enabled PCs is made.
-
-Linux dependencies are provided by RPM: Python3, PyGObject, GTK4 and Node22.13+. Backend code continues the tested CSV/SQLite/LAN implementation. Frontend-to-host communication is private stdin/stdout; only role transport endpoints use authenticated HTTP(S). The old web assets in `backend/public` are regression fixtures only and are excluded from the RPM, along with old web entry points.
-
-Developer verification:
+## ตรวจสอบ / ถอนการติดตั้ง
 
 ```sh
 npm test --prefix backend
-python3 -m unittest discover -s desktop/tests
-bash packaging/build-rpm.sh /absolute/build-directory
+python3 -B -m unittest discover -s desktop/tests -v
+python3 -B desktop/ui_test.py  # ต้องมี native GTK display
+bash packaging/build-rpm.sh /absolute/owned-build-directory
+sudo dnf remove aqua-command-desktop
 ```
 
-Windows `.exe`, WinCC Runtime execution, two physical LAN hosts, actual Telegram and hardware power loss have not been verified by the Linux build. This release delivers an RPM; it does not claim a Windows executable was built. No production OT, firewall, routing/NAT/bridge or sharing configuration is touched.
+ถอนแพ็กเกจจะไม่ลบคิวส่วนตัว เก็บข้อมูลไว้จนกว่าจะตรวจสอบการส่งครบแล้ว [รายละเอียดการทดสอบและข้อจำกัด](VERIFICATION.md)
 
-The RPM is unsigned and targets Fedora 44. The developer check exercised its extracted payload and launcher in a private folder; a system-wide DNF installation transaction has not been performed. [Verification and rollback](VERIFICATION.md).
+CSV ที่กดบันทึกเป็นข้อมูลล่าสุดที่ยังเก็บอยู่ จำกัด 2,000 events / 250 KB ของ payload ต่อครั้ง มีข้อความแจ้งเมื่อได้เพียงบางส่วน Source เก็บประวัติ ACK แล้วสูงสุด 2,000 events และ pending 10,000 events เมื่อ pending เต็มจะหยุดเก็บพร้อมแจ้งข้อผิดพลาดโดยไม่ลบข้อมูลที่ยังไม่ ACK ฐานข้อมูลมีเพดาน 64 MiB; ไม่ใช่คลังข้อมูลไม่จำกัด

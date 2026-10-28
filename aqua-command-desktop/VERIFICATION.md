@@ -1,4 +1,32 @@
-# Native desktop LAB verification — 0.6.0
+# 0.7.0 permission and UX increment
+
+This increment addresses operator permission before any work, separate collection/transfer permission, explicit unavailable WinCC Runtime, and a clearer native workflow. It does not implement a direct WinCC driver or authorize production changes.
+
+| Gate | Changed files | Evidence | Risk / rollback |
+| --- | --- | --- | --- |
+| G0 audit | Existing desktop and service entry points | Identified constructor auto-start, unguarded sampling and forwarding; repository clean at 3763d2a before changes | Prior RPM auto-start behavior superseded; original v0.3 untouched |
+| G1 permission boundary | services.js, config.js, supervisor.js, host.mjs | New regression first failed on auto-start. Capture and transfer require explicit approval; every role restart resets its permissions | Existing requests may finish; generation checks prevent the next request after revocation. Revert source only for investigation, not as a safe deployment |
+| G2 native UX | app.py, style.css, consent.py, tests | Initial window has no worker and creates no state files. Cancel starts nothing. Read approval creates a local queue without delivery; separate send approval drains it | Runtime unavailable stays blocked; no automatic LAB substitution. Stop/close keeps queues |
+| G3 regression | backend/tests/desktop.test.js, desktop/tests, ui_test.py | Local socket/process tests, permission scope/cancel/remember/revoke/relaunch, CSV immutability and unknown quality. Test commands below | WinCC, Windows, physical LAN and actual external sends unverified |
+| G4 package | version0.7 RPM spec/launcher/payload | Native integration supports --installed-root to exercise actual packaged files. No web assets, startup service or scriptlets | Private payload deployment, not a system DNF transaction; unsigned Fedora44 LAB build |
+| G5 review/delivery | README, release binary/checksum | Independent review found revoke-during-request and delayed fixture-restart races; regression tests reproduce both before fixes | Publish on dedicated feature branch; remote commit comparison and concrete result counts recorded in delivery report |
+
+Tests:
+
+```sh
+npm test --prefix backend
+python3 -B -m unittest discover -s desktop/tests -v
+desktop-file-validate packaging/org.aquacommand.Desktop.desktop
+python3 -B desktop/ui_test.py
+```
+
+Remembered grants are hashes of source mode/settings/tag mapping/interval/storage and exact loopback destination identity/URLs/dry-run mode. They suppress the review dialog only after a manual start click. Capture and transfer grants are separate. Invalid/missing/old consent files deny permission. No record of consent grants runtime access through an unavailable driver.
+
+The tests use owned LAB data, local sockets and a deferred fake Telegram probe for the revocation race. No actual Telegram request, source/PLC write, production connection, network scan, service enablement or network configuration change is used. Uploaded SCADA samples and real tag names remain outside this public repository.
+
+Rollback after an actual install: close AQUA, then `sudo dnf remove aqua-command-desktop`. Retain user state and queues. Original inputs are untouched. Reinstalling an old auto-starting version is not the recommended rollback.
+
+# Historical 0.6.0 LAB verification (superseded startup UX)
 
 Scope: native GTK4 frontend and Fedora 44 RPM, continuing the read-only CSV/SQLite/LAN backend. The original v0.3 checkout and the repository's existing production web services were not modified or run. Root README only adds the native application entry point.
 

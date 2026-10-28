@@ -10,6 +10,9 @@ class ModelTests(unittest.TestCase):
  def test_status_never_turns_missing_bad_or_stale_values_into_off(self):
   s={'agents':[{'online':True,'recording':True,'simulated':False,'observedAt':'2000-01-01T00:00:00Z','pumps':{'LAB_A.RUN_S':False},'observations':{'LAB_A.RUN_S':{'raw_value':0,'quality':'BAD','quality_code':0}}}],'gatewayConnected':True,'internetStatus':'UNREACHABLE','readOnly':True}
   view=self.model.present_status(s);self.assertFalse(view['gateway_ready']);self.assertEqual(view['rows'][0]['state'],'ไม่ทราบ');self.assertEqual(view['mode'],'ไฟล์ต้นทาง · WinCC ยังไม่ผ่านการตรวจรับ')
+ def test_idle_agent_without_first_observation_stays_unknown(self):
+  view=self.model.present_status({'agents':[{'online':True,'recording':False,'observedAt':None}]})
+  self.assertEqual(view['observed'],'—');self.assertEqual(view['rows'],[])
  def test_settings_fail_closed_before_writing_through_source_alias(self):
   with tempfile.TemporaryDirectory() as d:
    root=pathlib.Path(d);source=root/'source';source.mkdir();alias=root/'alias';alias.symlink_to(source,target_is_directory=True)

@@ -40,35 +40,40 @@ export function createAgent(config){
  const app={config,store:new Store(config.dataDir,config.storage),port:null,stopped:false,lastError:null,spoolError:null,errorCount:0,lanState:'DISCONNECTED',gatewayAuthenticated:false,session:null,sessionExpires:0,nextRetry:0,retryCount:0,nextExport:Date.now(),busy:null};
  app.selectedGatewayUrl=config.gatewayUrl;app.nextRetry=app.store.get('retryAt',0);app.retryCount=app.store.get('consecutiveFailures',0);app.errorCount=app.store.get('errorCount',0);
  try{app.source=checkedSource||runtimeAdapter(config.sourceAdapter||'simulated-runtime',app.store,config.id,config);if(checkedSource)checkedSource.store=app.store}catch(e){app.store.close();throw e}if(!app.source.available){app.store.close();throw Error('WinCC source unavailable until separately approved')}
- app.sample=()=>app.source.kind==='wincc-csv'?app.source.capture():app.store.append(config.id,'SNAPSHOT',app.source.read());
+ app.captureAllowed=config.requireConsent!==true;app.transferAllowed=config.requireConsent!==true;app.transferGeneration=0;
+ app.sample=()=>{if(!app.captureAllowed)throw Object.assign(Error('Capture permission required'),{status:403});return app.source.kind==='wincc-csv'?app.source.capture():app.store.append(config.id,'SNAPSHOT',app.source.read())};
  app.setPump=(id,on)=>{
   if(app.source.readOnly)throw Object.assign(Error('Runtime source is read-only; commands forbidden'),{status:403});
   const pumps=app.store.pumps(config.id);if(!Object.hasOwn(pumps,id)||typeof on!=='boolean')throw Error('Invalid simulated pump command');
   const before=pumps[id];if(before===on)return {changed:false};pumps[id]=on;
   return {changed:true,event:app.store.append(config.id,'STATE_CHANGE',pumps,{tag_name:id,before,value:on})};
  };
- app.status=()=>({id:config.id,role:'agent',pid:process.pid,simulated:app.source.simulated,readOnly:app.source.readOnly===true||config.readOnly===true,sourceAdapter:app.source.kind,recording:!app.store.get('recordingPaused',false),observedAt:app.store.get('runtimeObservedAt'),observations:app.store.get('runtimeObservations',{}),...app.store.stats(),pumps:app.source.readOnly?app.store.get('pumps',Object.fromEntries(config.csv.tags.map(tag=>[tag,null]))):app.store.pumps(config.id),nextExport:new Date(app.nextExport).toISOString(),errorCount:app.errorCount,retryCount:app.store.get('retryCount',0),inFlight:app.store.get('inFlight',0),nextRetryAt:app.store.get('retryAt',0),lanState:app.lanState,gatewayAuthenticated:app.gatewayAuthenticated,gatewayAddress:new URL(app.selectedGatewayUrl).host,lastError:app.spoolError||app.lastError,disk:app.store.disk(),logs:app.store.logs()});
+ app.status=()=>({id:config.id,role:'agent',pid:process.pid,simulated:app.source.simulated,readOnly:app.source.readOnly===true||config.readOnly===true,sourceAdapter:app.source.kind,captureAllowed:app.captureAllowed,transferAllowed:app.transferAllowed,recording:app.captureAllowed&&!app.store.get('recordingPaused',false),observedAt:app.store.get('runtimeObservedAt'),observations:app.store.get('runtimeObservations',{}),...app.store.stats(),pumps:app.source.readOnly?app.store.get('pumps',Object.fromEntries(config.csv.tags.map(tag=>[tag,null]))):app.store.pumps(config.id),nextExport:new Date(app.nextExport).toISOString(),errorCount:app.errorCount,retryCount:app.store.get('retryCount',0),inFlight:app.store.get('inFlight',0),nextRetryAt:app.store.get('retryAt',0),lanState:app.lanState,gatewayAuthenticated:app.gatewayAuthenticated,gatewayAddress:new URL(app.selectedGatewayUrl).host,sourceError:app.spoolError,transferError:app.lastError,lastError:app.spoolError||app.lastError,disk:app.store.disk(),logs:app.store.logs()});
  app.server=serverFor(config,app.store,{[config.id]:config.secret},async(route,body)=>{
   if(route==='/v1/status')return app.status();
   if(route==='/v1/sim/pump'){if(config.readOnly||app.source.readOnly)throw Object.assign(Error('Read-only source; commands forbidden'),{status:403});return app.setPump(body.id,body.on)}
-  if(route==='/v1/recording'){if(!app.source.readOnly||typeof body.running!=='boolean')throw Object.assign(Error('Local recording boolean required'),{status:400});app.store.set('recordingPaused',!body.running);return {ok:true,recording:body.running}}
+  if(route==='/v1/recording'){if(!app.source.readOnly||typeof body.running!=='boolean')throw Object.assign(Error('Local recording boolean required'),{status:400});app.captureAllowed=body.running;app.store.set('recordingPaused',!body.running);return {ok:true,recording:body.running}}
+  if(route==='/v1/transfer'&&config.requireConsent){if(typeof body.running!=='boolean')throw Error('Transfer boolean required');app.transferAllowed=body.running;app.transferGeneration++;if(!body.running){app.session=null;app.gatewayAuthenticated=false;if(app.busy)await app.busy.catch(()=>{})}return {transferAllowed:app.transferAllowed}}
   if(route==='/v1/exports')return retainedExport(app.store);
   if(route==='/v1/sim/export'){if(config.readOnly||app.source.readOnly)throw Object.assign(Error('Read-only LAB'),{status:403});return app.sample()}
   throw Object.assign(Error('Unknown route'),{status:404});
  });
  app.exportDue=()=>{
-  if(app.source.readOnly&&app.store.get('recordingPaused',false))return;
+  if(!app.captureAllowed||app.source.readOnly&&app.store.get('recordingPaused',false))return;
   if(Date.now()>=app.nextExport){try{app.sample();app.spoolError=null;app.nextExport=Date.now()+(config.intervalMs??5000)}catch(e){app.spoolError=app.source.readOnly?'Read-only input/storage error: '+e.message:'Local spool/storage quota failure; unACKed data retained';app.errorCount++;try{app.store.set('errorCount',app.errorCount)}catch{}app.nextExport=Date.now()+1000}}
  };
  app.step=async({sample=true}={})=>{
   if(app.stopped)return;if(sample)app.exportDue();
+  const generation=app.transferGeneration,allowed=()=>app.transferAllowed&&app.transferGeneration===generation&&!app.stopped;if(!allowed())return;
   const rows=app.store.pending();if(!rows.length||Date.now()<app.nextRetry)return;
   try{
    const identity={id:config.id,secret:config.secret};
    if(!app.session||app.sessionExpires<=Date.now()){
     let hello,lastFailure;
     for(const base of candidates){try{
+     if(!allowed())return;
      const clientNonce=randomBytes(20).toString('hex'),response=await requestJSON(base,'/v1/handshake',identity,{clientNonce},config);
+     if(!allowed())return;
      if(response.clientNonce!==clientNonce||response.gatewayId!=='PC-04'||typeof response.session!=='string'||!Number.isFinite(response.expiresAt))throw Error('Handshake mismatch');
      if(app.source.readOnly&&response.ready!==true){lastFailure=Object.assign(Error('Approved Gateway egress not ready'),{transportConnected:true,authenticatedPeer:true});continue}
      hello=response;app.selectedGatewayUrl=base;break;
@@ -76,12 +81,13 @@ export function createAgent(config){
     if(!hello)throw lastFailure||Error('No approved Gateway available');
     app.session=hello.session;app.sessionExpires=hello.expiresAt;app.lanState='LAN_CONNECTED';if(!app.gatewayAuthenticated)app.store.log('LAN_CONNECT','Enrolled Gateway handshake authenticated');app.gatewayAuthenticated=true;
    }
+   if(!allowed())return;
    app.store.set('inFlight',rows.length);
    const response=await requestJSON(app.selectedGatewayUrl,'/v1/events',identity,{session:app.session,events:rows.map(r=>JSON.parse(r.payload))},config);
    const want=new Map(rows.map(r=>[r.id,r.digest]));
    if(!Array.isArray(response.acks)||response.acks.length!==want.size||new Set(response.acks.map(a=>a.event_id)).size!==want.size||response.acks.some(a=>want.get(a.event_id)!==a.sha256))throw Object.assign(Error('ACK digest/set mismatch'),{transportConnected:true,authenticatedPeer:true});
    app.store.acknowledge(response.acks);app.lastError=null;app.retryCount=0;app.nextRetry=Date.now()+150;app.store.set('consecutiveFailures',0);app.store.set('retryAt',app.nextRetry);
-  }catch(e){const wasAuthenticated=app.gatewayAuthenticated;app.lanState=e.transportConnected?'LAN_CONNECTED':'DISCONNECTED';app.gatewayAuthenticated=e.authenticatedPeer===true;app.session=null;app.lastError=e.authenticationFailed?'Gateway authentication failed; local data retained':'Gateway unavailable / request not ACKed';if(wasAuthenticated&&!e.transportConnected)try{app.store.log('LAN_DISCONNECT','Enrolled Gateway transport no longer available')}catch{}app.retryCount++;app.nextRetry=Date.now()+Math.min(5000,200*2**Math.min(app.retryCount-1,5))*(.8+Math.random()*.4);try{app.store.set('retryCount',app.store.get('retryCount',0)+1);app.store.set('consecutiveFailures',app.retryCount);app.store.set('retryAt',app.nextRetry);app.store.log('RETRY','Gateway upload retained locally')}catch{app.spoolError='Spool metadata write failure; events retained'}}
+  }catch(e){if(!allowed())return;const wasAuthenticated=app.gatewayAuthenticated;app.lanState=e.transportConnected?'LAN_CONNECTED':'DISCONNECTED';app.gatewayAuthenticated=e.authenticatedPeer===true;app.session=null;app.lastError=e.authenticationFailed?'Gateway authentication failed; local data retained':'Gateway unavailable / request not ACKed';if(wasAuthenticated&&!e.transportConnected)try{app.store.log('LAN_DISCONNECT','Enrolled Gateway transport no longer available')}catch{}app.retryCount++;app.nextRetry=Date.now()+Math.min(5000,200*2**Math.min(app.retryCount-1,5))*(.8+Math.random()*.4);try{app.store.set('retryCount',app.store.get('retryCount',0)+1);app.store.set('consecutiveFailures',app.retryCount);app.store.set('retryAt',app.nextRetry);app.store.log('RETRY','Gateway upload retained locally')}catch{app.spoolError='Spool metadata write failure; events retained'}}
   finally{try{app.store.set('inFlight',0)}catch{app.spoolError='Spool metadata write failure; events retained'}}
  };
  app.start=async()=>{await open(app);app.store.set('inFlight',0);app.exportTimer=setInterval(()=>{if(!app.stopped)app.exportDue()},50);app.timer=setInterval(()=>{if(!app.busy){app.busy=app.step({sample:false}).catch(()=>{app.lastError='Local service/storage failure';app.errorCount++}).finally(()=>app.busy=null)}},50);return app};app.close=()=>close(app);return app;
@@ -89,12 +95,14 @@ export function createAgent(config){
 export function createGateway(config,options={}){
  if(config.upstream)endpoint(config.upstream.url,config);if(config.notificationSink)endpoint(config.notificationSink.url,config);
  const app={config,store:new Store(config.dataDir,{...config.storage,notifications:true}),port:null,stopped:false,lastError:null,busy:null};
+ app.transferAllowed=config.requireConsent!==true;app.transferGeneration=0;
  app.telegram=options.telegram||new TelegramTransport({env:config.internetMode==='real'?(options.env??process.env):{}});
  if(app.store.get('internetOnline')===null)app.store.set('internetOnline',config.internetOnline??config.internetMode==='real');
  app.setInternet=online=>{if(config.readOnly)throw Object.assign(Error('Read-only LAB'),{status:403});if(typeof online!=='boolean')throw Error('Internet gate must be boolean');app.store.set('internetOnline',online);app.store.log('EGRESS_CHANGE',`Gateway outbound simulation gate ${online?'UP':'DOWN'}`)};
- app.status=()=>({id:config.id,role:'gateway',pid:process.pid,simulated:true,...app.store.stats(),...app.store.notificationStats(),internetMode:config.internetMode||'simulated',internetOnline:app.store.get('internetOnline',false),egress:app.store.get('egress',{status:'BLOCKED',mode:config.internetMode||'simulated',checkedAt:null}),upstreamConfigured:!!config.upstream,upstreamDelivered:app.store.get('upstreamDelivered',0),lastDelivery:app.store.get('lastDelivery'),notificationMode:config.notificationSink?'mock-http':app.telegram.mode,telegramCooldownUntil:app.store.get('telegramNotBefore',0),lastError:app.lastError,messages:app.store.messages(),disk:app.store.disk(),logs:app.store.logs()});
+ app.status=()=>({id:config.id,role:'gateway',pid:process.pid,simulated:true,...app.store.stats(),...app.store.notificationStats(),transferAllowed:app.transferAllowed,internetMode:config.internetMode||'simulated',internetOnline:app.store.get('internetOnline',false),egress:app.store.get('egress',{status:'BLOCKED',mode:config.internetMode||'simulated',checkedAt:null}),upstreamConfigured:!!config.upstream,upstreamDelivered:app.store.get('upstreamDelivered',0),lastDelivery:app.store.get('lastDelivery'),notificationMode:config.notificationSink?'mock-http':app.telegram.mode,telegramCooldownUntil:app.store.get('telegramNotBefore',0),lastError:app.lastError,messages:app.store.messages(),disk:app.store.disk(),logs:app.store.logs()});
  app.server=serverFor(config,app.store,config.keys,async(route,body,id)=>{
   if(route==='/v1/status'){if(id!=='DASHBOARD')throw Object.assign(Error('Admin identity required'),{status:403});return app.status()}
+  if(route==='/v1/transfer'&&config.requireConsent){if(id!=='DASHBOARD'||typeof body.running!=='boolean')throw Object.assign(Error('Admin transfer permission required'),{status:403});app.transferAllowed=body.running;app.transferGeneration++;if(!body.running&&app.busy)await app.busy.catch(()=>{});return {transferAllowed:app.transferAllowed}}
   if(route==='/v1/sim/internet'){if(id!=='DASHBOARD')throw Object.assign(Error('Admin identity required'),{status:403});app.setInternet(body.online);return {ok:true}}
   if(route==='/v1/sim/fault'){
    if(id!=='DASHBOARD'||config.readOnly)throw Object.assign(Error('Simulation admin required'),{status:403});
@@ -105,9 +113,10 @@ export function createGateway(config,options={}){
   if(!GROUPS[id])throw Object.assign(Error('Exporter enrollment required'),{status:403});
   if(route==='/v1/handshake'){
    if(typeof body.clientNonce!=='string'||body.clientNonce.length<16||body.clientNonce.length>128)throw Error('Invalid handshake');
-   return {...app.store.session(id),clientNonce:body.clientNonce,gatewayId:'PC-04',ready:app.store.get('internetOnline',false)&&((config.internetMode||'simulated')==='simulated'||app.store.get('egress',{}).status==='VERIFIED')};
+   return {...app.store.session(id),clientNonce:body.clientNonce,gatewayId:'PC-04',ready:app.transferAllowed&&app.store.get('internetOnline',false)&&((config.internetMode||'simulated')==='simulated'||app.store.get('egress',{}).status==='VERIFIED')};
   }
   if(route==='/v1/events'){
+   if(!app.transferAllowed)throw Object.assign(Error('Transfer permission required'),{status:403});
    if(!app.store.validSession(id,body.session))throw Object.assign(Error('Session expired'),{status:409});
    if(app.store.get('beforeCommit',false)){app.store.set('beforeCommit',false);throw Object.assign(Error('LAB fault before commit; no ACK'),{status:503})}
    const acks=app.store.ingest(id,body.events);
@@ -117,17 +126,19 @@ export function createGateway(config,options={}){
   throw Object.assign(Error('Unknown route'),{status:404});
  });
  app.deliver=async()=>{
+  const generation=app.transferGeneration,allowed=()=>app.transferAllowed&&app.transferGeneration===generation&&!app.stopped;if(!allowed())return;
   const mode=config.internetMode||'simulated';
   if(!app.store.get('internetOnline',false)){app.store.set('egress',{status:'BLOCKED',mode,checkedAt:null});return}
   if(app.telegram.mode==='telegram'){
    if(mode!=='real'||!app.telegram.configured){app.store.set('egress',{status:'UNCONFIGURED',mode,checkedAt:null});return}
    if(app.store.get('telegramNotBefore',0)>Date.now())return;
    if(app.store.get('probeAfter',0)<=Date.now()){
-    try{if(!await app.telegram.probe())throw Error('Egress probe failed');app.store.set('egress',{status:'VERIFIED',mode,checkedAt:new Date().toISOString()});app.store.set('probeAfter',Date.now()+10000)}
+    try{if(!await app.telegram.probe())throw Error('Egress probe failed');if(!allowed())return;app.store.set('egress',{status:'VERIFIED',mode,checkedAt:new Date().toISOString()});app.store.set('probeAfter',Date.now()+10000)}
     catch(e){const delay=e.retryAfterMs||5000;app.store.set('telegramNotBefore',Date.now()+delay);app.store.set('egress',{status:'UNREACHABLE',mode,checkedAt:new Date().toISOString()});app.lastError='Gateway egress verification failed';return}
    }
   }else if(mode==='real'){app.store.set('egress',{status:'UNCONFIGURED',mode,checkedAt:null});return}
   else app.store.set('egress',{status:'SIMULATED_AVAILABLE',mode,checkedAt:new Date().toISOString()});
+  if(!allowed())return;
   if(config.upstream&&app.store.get('upstreamRetryAt',0)<=Date.now()){
    const first=app.store.pending(1)[0];
    if(first){const rows=app.store.db.prepare("SELECT * FROM records WHERE state!='acked' AND source=? ORDER BY seq LIMIT 32").all(first.source);
@@ -135,6 +146,7 @@ export function createGateway(config,options={}){
     catch{const n=app.store.get('upstreamFailures',0)+1;app.store.set('upstreamFailures',n);app.store.set('upstreamRetryAt',Date.now()+Math.min(5000,200*2**Math.min(n-1,5)));app.store.log('RETRY','Upstream ACK unavailable; durable outbound retained');app.lastError='Upstream request not ACKed'}
    }
   }
+  if(!allowed())return;
   const row=app.store.nextNotification();if(!row)return;
   try{
    if(config.notificationSink){const response=await requestJSON(config.notificationSink.url,'/v1/notification',{id:'PC-04',secret:config.notificationSink.secret},{event:JSON.parse(row.payload)},config);if(response.event_id!==row.id||response.sha256!==digest(row.payload))throw Error('Notification ACK mismatch');app.store.markNotification(row.id,'mock-http')}
